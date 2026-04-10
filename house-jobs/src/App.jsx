@@ -141,6 +141,28 @@ async function hashPassword(pw) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
 }
 
+// ─── FIREBASE KEY SANITIZATION ───
+// Firebase keys can't contain . # $ / [ ]
+// Week labels like "8/25-8/31" need sanitizing
+function sanitizeKey(key) { return key.replace(/[.#$/\[\]]/g, "_"); }
+function desanitizeKey(key) { return key; } // one-way; we store a mapping
+function sanitizeAssignmentKeys(asg) {
+  const out = {};
+  Object.entries(asg).forEach(([week, jobs]) => { out[sanitizeKey(week)] = jobs; });
+  return out;
+}
+function desanitizeAssignmentKeys(asg, weeks) {
+  // Map sanitized keys back to original week labels using the weeks array
+  const sanitizedToOriginal = {};
+  weeks.forEach(w => { sanitizedToOriginal[sanitizeKey(w)] = w; });
+  const out = {};
+  Object.entries(asg).forEach(([sKey, jobs]) => {
+    const original = sanitizedToOriginal[sKey] || sKey;
+    out[original] = jobs;
+  });
+  return out;
+}
+
 // ─── FIREBASE MODULE ───
 let db = null;
 let firebaseReady = false;
@@ -280,20 +302,24 @@ export default function HouseJobsApp() {
           setSemesterName(cfg.semesterName || "Fall 2026");
         }
         if (asg) {
-          setAssignments(asg);
+          const w = cfg?.weeks || DEFAULT_WEEKS;
+          setAssignments(desanitizeAssignmentKeys(asg, w));
         } else {
           const b = cfg?.brothers || DEFAULT_BROTHERS;
           const j = cfg?.jobs || DEFAULT_JOBS;
           const w = cfg?.weeks || DEFAULT_WEEKS;
           const a = generateAssignments(b, j, w);
           setAssignments(a);
-          await fbSet("assignments", a);
+          await fbSet("assignments", sanitizeAssignmentKeys(a));
         }
 
         // Live listener for assignments (real-time sync)
         fbOnValue("assignments", (data) => {
           if (skipNextSync.current) { skipNextSync.current = false; return; }
-          if (data) setAssignments(data);
+          if (data) {
+            const w = cfg?.weeks || DEFAULT_WEEKS;
+            setAssignments(desanitizeAssignmentKeys(data, w));
+          }
         });
         fbOnValue("config", (data) => {
           if (data) {
@@ -331,7 +357,7 @@ export default function HouseJobsApp() {
   const saveAssignments = useCallback(async (a) => {
     if (fbConnected) {
       skipNextSync.current = true;
-      await fbSet("assignments", a);
+      await fbSet("assignments", sanitizeAssignmentKeys(a));
     } else {
       try { await window.storage.set("housejobs:assignments", JSON.stringify(a)); } catch {}
     }
