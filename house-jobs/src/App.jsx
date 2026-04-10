@@ -39,13 +39,13 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 
 // ▼▼▼ PASTE YOUR FIREBASE CONFIG HERE ▼▼▼
 const FIREBASE_CONFIG = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyAUWn9oU5uFAkckIWMsYMBHmvffxnYEZ_k",
+  authDomain: "house-jobs-19e96.firebaseapp.com",
+  databaseURL: "https://house-jobs-19e96-default-rtdb.firebaseio.com",
+  projectId: "house-jobs-19e96",
+  storageBucket: "house-jobs-19e96.firebasestorage.app",
+  messagingSenderId: "568801873290",
+  appId: "1:568801873290:web:7db8c4c0910ceeb29f0c73"
 };
 // ▲▲▲ PASTE YOUR FIREBASE CONFIG HERE ▲▲▲
 
