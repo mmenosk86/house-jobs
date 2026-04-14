@@ -241,6 +241,7 @@ export default function HouseJobsApp(){
   const[sundayAssignments,setSundayAssignments]=useState({});
   const[sundayEditingJob,setSundayEditingJob]=useState(null);
   const[sundayEditNames,setSundayEditNames]=useState("");
+  const[makeupName,setMakeupName]=useState("");
   // Projects
   const[projects,setProjects]=useState(DEFAULT_PROJECTS);
   const[weeklyProjects,setWeeklyProjects]=useState({});
@@ -331,6 +332,27 @@ export default function HouseJobsApp(){
   function overrideSundayJob(week,jobId,names){setSundayAssignments(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.jobs?.[jobId])u[week].jobs[jobId].assigned=names;saveSunA(u);return u;});}
   function reshuffleSundayWeek(week){setSundayAssignments(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week])u[week]=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs);saveSunA(u);return u;});}
 
+  // Makeup functions — adds someone to next week's Sunday cleaning
+  function addMakeup(name){
+    const nextIdx=currentWeekIdx+1;
+    if(nextIdx>=weeks.length||!name.trim())return;
+    const nextWeek=weeks[nextIdx];
+    setSundayAssignments(prev=>{
+      const u=JSON.parse(JSON.stringify(prev));
+      if(!u[nextWeek])return prev;
+      if(!u[nextWeek].makeups)u[nextWeek].makeups=[];
+      if(!u[nextWeek].makeups.includes(name.trim())){u[nextWeek].makeups.push(name.trim());}
+      saveSunA(u);return u;
+    });
+    setMakeupName("");
+  }
+  function removeMakeup(week,name){
+    setSundayAssignments(prev=>{
+      const u=JSON.parse(JSON.stringify(prev));
+      if(u[week]?.makeups){u[week].makeups=u[week].makeups.filter(n=>n!==name);}
+      saveSunA(u);return u;
+    });
+  }
   // Project actions
   function claimProject(week,projIdx,name){
     setWeeklyProjects(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.projects?.[projIdx]&&u[week].projects[projIdx].status==="available"){u[week].projects[projIdx].status="claimed";u[week].projects[projIdx].claimedBy=name;}saveProjA(u);return u;});
@@ -469,6 +491,45 @@ export default function HouseJobsApp(){
                 {isEd&&adminUnlocked&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #334155",display:"flex",gap:8}}><Input value={sundayEditNames} onChange={setSundayEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={()=>{overrideSundayJob(currentWeek,job.id,sundayEditNames.split(",").map(n=>n.trim()).filter(Boolean));setSundayEditingJob(null);}}>Save</SmallBtn></div>}
               </div>);})}
           </div>
+
+          {/* MAKEUP SECTION */}
+          <div style={{marginTop:20,background:"#1E293B",borderRadius:12,padding:16,border:"1px solid #F59E0B40"}}>
+            <h3 style={{fontSize:13,fontWeight:700,color:"#F59E0B",marginBottom:4,letterSpacing:"0.05em"}}>MISSED SUNDAY?</h3>
+            <p style={{fontSize:12,color:"#64748B",lineHeight:1.6,marginBottom:12}}>
+              If you missed this week's cleaning, enter your name below to be added to <span style={{color:"#CBD5E1",fontWeight:600}}>next week's</span> Sunday cleaning regardless of your pin group. You must also fill out the absence form.
+            </p>
+            {currentWeekIdx<weeks.length-1?<>
+              <div style={{display:"flex",gap:8,marginBottom:10}}>
+                <Input value={makeupName} onChange={setMakeupName} placeholder="Your full name..." style={{flex:1,padding:"8px 12px",fontSize:13}}/>
+                <SmallBtn onClick={()=>addMakeup(makeupName)} color="#F59E0B">Add Me</SmallBtn>
+              </div>
+            </>:<p style={{fontSize:12,color:"#64748B",fontStyle:"italic"}}>Last week of the semester — no makeup available.</p>}
+
+            {/* Show who's signed up for makeup next week */}
+            {currentWeekIdx<weeks.length-1&&(()=>{
+              const nextWeek=weeks[currentWeekIdx+1];
+              const nextData=sundayAssignments[nextWeek];
+              const makeups=nextData?.makeups||[];
+              if(makeups.length===0)return null;
+              return<div style={{marginTop:8}}>
+                <div style={{fontSize:11,color:"#94A3B8",fontWeight:600,marginBottom:6}}>SIGNED UP FOR NEXT WEEK ({nextWeek}):</div>
+                {makeups.map((name,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#0F172A",borderRadius:6,padding:"6px 10px",marginBottom:4,border:"1px solid #334155"}}>
+                  <span style={{fontSize:13,color:"#FCD34D"}}>{name}</span>
+                  {(adminUnlocked)&&<button onClick={()=>removeMakeup(nextWeek,name)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:16,padding:"0 4px",lineHeight:1}}>×</button>}
+                </div>)}
+              </div>;
+            })()}
+
+            {/* Show makeups for current week if any */}
+            {(sunWeekData.makeups||[]).length>0&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #334155"}}>
+              <div style={{fontSize:11,color:"#94A3B8",fontWeight:600,marginBottom:6}}>MAKEUP MEMBERS THIS WEEK:</div>
+              {sunWeekData.makeups.map((name,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#0F172A",borderRadius:6,padding:"6px 10px",marginBottom:4,border:"1px solid #F59E0B30"}}>
+                <span style={{fontSize:13,color:"#FCD34D"}}>{name}</span>
+                {adminUnlocked&&<button onClick={()=>removeMakeup(currentWeek,name)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:16,padding:"0 4px",lineHeight:1}}>×</button>}
+              </div>)}
+            </div>}
+          </div>
+
           {adminUnlocked&&<button onClick={()=>setView("sunday_setup")} style={{marginTop:20,width:"100%",background:"#1E293B",border:"1px solid #334155",color:"#94A3B8",borderRadius:10,padding:"12px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>⚙ Edit Sunday Roster & Jobs</button>}
         </div>}
 
