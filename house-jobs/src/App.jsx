@@ -3,37 +3,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 /*
  * ════════════════════════════════════════════════════════
  *  HOUSE JOBS — Firebase Realtime Database Edition
- * ════════════════════════════════════════════════════════
- *
- *  SETUP INSTRUCTIONS:
- *  1. Go to https://console.firebase.google.com
- *  2. Click "Create a project" (or "Add project")
- *  3. Name it whatever you want (e.g. "house-jobs")
- *  4. Disable Google Analytics (you don't need it)
- *  5. Once created, click "Realtime Database" in the left sidebar
- *  6. Click "Create Database"
- *  7. Choose your region, then select "Start in TEST MODE"
- *  8. Go to Project Settings (gear icon top left) → scroll down
- *  9. Under "Your apps", click the web icon (</>)
- *  10. Register the app (any nickname), skip hosting
- *  11. Copy your firebaseConfig object and paste it below,
- *      replacing the placeholder values
- *
- *  DEPLOY:
- *  - Push this file to a GitHub repo
- *  - Go to https://vercel.com, import the repo, deploy
- *  - Or use Netlify, GitHub Pages, etc.
- *
- *  SECURITY RULES (optional but recommended):
- *  In Firebase Console → Realtime Database → Rules, set:
- *  {
- *    "rules": {
- *      ".read": true,
- *      ".write": true
- *    }
- *  }
- *  This allows anyone with the URL to read/write.
- *  For tighter security, you can add Firebase Auth later.
+ *  With Sunday Cleaning System
  * ════════════════════════════════════════════════════════
  */
 
@@ -49,10 +19,6 @@ const FIREBASE_CONFIG = {
 };
 // ▲▲▲ PASTE YOUR FIREBASE CONFIG HERE ▲▲▲
 
-// Admin password hash (SHA-256 of "HM1963")
-// We hash client-side so the password isn't in plain text in the bundle
-const ADMIN_HASH = "a]check";
-
 // ─── DEFAULTS ───
 const DEFAULT_WEEKS = [
   "8/25-8/31","9/1-9/7","9/8-9/14","9/15-9/21","9/22-9/28",
@@ -62,9 +28,9 @@ const DEFAULT_WEEKS = [
 ];
 
 const DEFAULT_BROTHERS = [
-  "Mason","Ethan","Gabe","Daniel","Mitchell","Evan","John",
-  "Aiden","Reese","Keely","Sergio","Nic","Rylan","Tyler",
-  "Ryan","Henry","Gavin","Cole","Jake","Nate"
+  "Mason M","Ethan D","Gabe D","Daniel M","Mitchell S","Evan R","John",
+  "Aiden","Reese C","Keely S","Sergio G","Nic D","Rylan Z","Tyler L",
+  "Ryan M","Henry","Gavin","Cole","Jake","Nate B"
 ];
 
 const DEFAULT_JOBS = [
@@ -85,6 +51,37 @@ const DEFAULT_JOBS = [
   { id:"chapter", name:"Chapter Room / MiniMub", area:"common", people:2, desc:"Deep clean after events, vacuum, wipe surfaces", rotating:true },
 ];
 
+// ─── SUNDAY CLEANING DEFAULTS ───
+const DEFAULT_EVEN_PINS = [
+  "Michael M","Derek G","Evan R","Andrew M","Sergio G","Grant M",
+  "Nate B","Jacob C","Nic D","Jack D","Daniel K","Michael T",
+  "Zach U","Morgan B","Cohl B","Jacob Ch","Michael J",
+  "Adlai K","Tyler P","David S","Alex M","James T","Thomas W"
+];
+
+const DEFAULT_ODD_PINS = [
+  "Ryan M","Tyler L","Daniel M","Jim B","Jordan G","Zach M",
+  "Noah C","Reese C","Ethan D","Gabe D","Toby J","Mason Meyer",
+  "Brandon G","Rylan Z","Thomas A","Lucas C","Madden H",
+  "Sean K","Mason Men","Vance S","Bobo B","Griffin S","Connor U"
+];
+
+const DEFAULT_SUNDAY_JOBS = [
+  { id:"sun_chapter", name:"Chapter Room / MiniMub", people:4, desc:"Sweep and mop everywhere, move all furniture and clean behind them. Put furniture back into place." },
+  { id:"sun_basement", name:"Basement", people:3, desc:"Sweep and mop basement, tidy up everything. Make sure closet by laundry room door is neat." },
+  { id:"sun_kitchen", name:"Kitchen", people:3, desc:"Sweep and mop kitchen, do all dishes, clean all surfaces. Put/throw away any left out spices, food etc. Empty grease trap into trash bag and put in dumpster." },
+  { id:"sun_timemachine", name:"Time Machine", people:2, desc:"Clean the time machine thoroughly." },
+  { id:"sun_2hall", name:"2nd Floor Hall / Stairs", people:2, desc:"Vacuum second floor hallway and sweep stairs." },
+  { id:"sun_trash", name:"Take Out All Trash", people:2, desc:"Collect all trash from every room and common area, take to dumpster." },
+  { id:"sun_1bath", name:"1st Floor Bathroom", people:2, desc:"Deep clean toilet, sink, shower, mirror, mop floor." },
+  { id:"sun_2bath", name:"2nd Floor Bathroom", people:2, desc:"Deep clean toilet, sink, shower, mirror, mop floor." },
+  { id:"sun_3bath", name:"3rd Floor Bathroom", people:2, desc:"Deep clean toilet, sink, shower, mirror, mop floor." },
+  { id:"sun_movieroom", name:"Movie Room / Den", people:2, desc:"Clean the movie room / den area." },
+  { id:"sun_3hall", name:"3rd Floor Hall / Stairs", people:2, desc:"Clean 3rd floor hallway and stairs." },
+  { id:"sun_entry", name:"Entry Way", people:2, desc:"Vacuum entry way and clean up." },
+  { id:"sun_porch", name:"Porch / Sidewalk", people:2, desc:"Sweep porch and sidewalk. Shovel if needed in winter." },
+];
+
 const AREA_META = {
   basement:{ label:"Basement", color:"#6B7280" },
   first:{ label:"1st Floor", color:"#8B5CF6" },
@@ -102,6 +99,7 @@ const STATUS_CONFIG = {
   verified:{ bg:"#DBEAFE", border:"#3B82F6", text:"#1E40AF", label:"Verified" },
 };
 
+// ─── HELPERS ───
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length-1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
@@ -135,6 +133,42 @@ function generateAssignments(brothers, jobs, weeks) {
   return asg;
 }
 
+function generateSundayAssignments(evenPins, oddPins, sundayJobs, weeks) {
+  const asg = {};
+  weeks.forEach((week, wi) => {
+    const isEvenWeek = wi % 2 === 0;
+    const pool = shuffle(isEvenWeek ? [...evenPins] : [...oddPins]);
+    const weekAsg = { group: isEvenWeek ? "even" : "odd", bothGroups: false, jobs: {} };
+    let pi = 0;
+    sundayJobs.forEach(job => {
+      const assigned = [];
+      for (let p = 0; p < job.people; p++) {
+        assigned.push(pool[pi % pool.length]);
+        pi++;
+      }
+      weekAsg.jobs[job.id] = { assigned, status: "pending" };
+    });
+    asg[week] = weekAsg;
+  });
+  return asg;
+}
+
+function regenerateSundayWeek(weekAsg, evenPins, oddPins, sundayJobs) {
+  const isBoth = weekAsg.bothGroups;
+  const group = weekAsg.group;
+  let pool;
+  if (isBoth) { pool = shuffle([...evenPins, ...oddPins]); }
+  else { pool = shuffle(group === "even" ? [...evenPins] : [...oddPins]); }
+  const jobs = {};
+  let pi = 0;
+  sundayJobs.forEach(job => {
+    const assigned = [];
+    for (let p = 0; p < job.people; p++) { assigned.push(pool[pi % pool.length]); pi++; }
+    jobs[job.id] = { assigned, status: "pending" };
+  });
+  return { ...weekAsg, jobs };
+}
+
 async function hashPassword(pw) {
   const enc = new TextEncoder().encode(pw);
   const buf = await crypto.subtle.digest("SHA-256", enc);
@@ -142,24 +176,17 @@ async function hashPassword(pw) {
 }
 
 // ─── FIREBASE KEY SANITIZATION ───
-// Firebase keys can't contain . # $ / [ ]
-// Week labels like "8/25-8/31" need sanitizing
 function sanitizeKey(key) { return key.replace(/[.#$/\[\]]/g, "_"); }
-function desanitizeKey(key) { return key; } // one-way; we store a mapping
-function sanitizeAssignmentKeys(asg) {
+function sanitizeObjKeys(obj) {
   const out = {};
-  Object.entries(asg).forEach(([week, jobs]) => { out[sanitizeKey(week)] = jobs; });
+  Object.entries(obj).forEach(([k, v]) => { out[sanitizeKey(k)] = v; });
   return out;
 }
-function desanitizeAssignmentKeys(asg, weeks) {
-  // Map sanitized keys back to original week labels using the weeks array
-  const sanitizedToOriginal = {};
-  weeks.forEach(w => { sanitizedToOriginal[sanitizeKey(w)] = w; });
+function desanitizeObjKeys(obj, keys) {
+  const map = {};
+  keys.forEach(k => { map[sanitizeKey(k)] = k; });
   const out = {};
-  Object.entries(asg).forEach(([sKey, jobs]) => {
-    const original = sanitizedToOriginal[sKey] || sKey;
-    out[original] = jobs;
-  });
+  Object.entries(obj).forEach(([sk, v]) => { out[map[sk] || sk] = v; });
   return out;
 }
 
@@ -177,10 +204,7 @@ async function initFirebase() {
     db = getDatabase(app);
     firebaseReady = true;
     return true;
-  } catch (e) {
-    console.error("Firebase init failed:", e);
-    return false;
-  }
+  } catch (e) { console.error("Firebase init failed:", e); return false; }
 }
 
 async function fbSet(path, data) {
@@ -199,58 +223,45 @@ async function fbGet(path) {
 async function fbOnValue(path, callback) {
   if (!firebaseReady) return () => {};
   const { ref, onValue } = await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");
-  const unsub = onValue(ref(db, path), snap => {
-    callback(snap.exists() ? snap.val() : null);
-  });
-  return unsub;
+  return onValue(ref(db, path), snap => { callback(snap.exists() ? snap.val() : null); });
 }
 
 // ─── SMALL COMPONENTS ───
-function StatusBadge({ status, onClick }) {
+function StatusBadge({ status, onClick, disabled }) {
   const c = STATUS_CONFIG[status];
   return (
-    <button onClick={onClick} style={{
+    <button onClick={disabled ? undefined : onClick} style={{
       background:c.bg, border:`1.5px solid ${c.border}`, color:c.text,
       borderRadius:6, padding:"3px 10px", fontSize:12, fontWeight:600,
-      cursor:"pointer", fontFamily:"inherit", letterSpacing:"0.02em",
+      cursor:disabled?"default":"pointer", fontFamily:"inherit", letterSpacing:"0.02em",
+      opacity:disabled?0.7:1,
     }}>{c.label}</button>
   );
 }
 
 function Input({ value, onChange, placeholder, style, type="text" }) {
   return <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-    style={{
-      background:"#0F172A", border:"1px solid #334155", color:"#E2E8F0",
-      borderRadius:8, padding:"10px 14px", fontSize:14, fontFamily:"inherit",
-      width:"100%", outline:"none", ...style,
-    }}
-    onFocus={e => e.target.style.borderColor="#10B981"}
-    onBlur={e => e.target.style.borderColor="#334155"}
-  />;
+    style={{ background:"#0F172A", border:"1px solid #334155", color:"#E2E8F0", borderRadius:8, padding:"10px 14px", fontSize:14, fontFamily:"inherit", width:"100%", outline:"none", ...style }}
+    onFocus={e => e.target.style.borderColor="#10B981"} onBlur={e => e.target.style.borderColor="#334155"} />;
 }
 
 function SmallBtn({ children, onClick, color="#10B981" }) {
-  return <button onClick={onClick} style={{
-    background:`${color}18`, border:`1px solid ${color}50`, color,
-    borderRadius:6, padding:"5px 12px", fontSize:12, fontWeight:600,
-    cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap",
-  }}>{children}</button>;
+  return <button onClick={onClick} style={{ background:`${color}18`, border:`1px solid ${color}50`, color, borderRadius:6, padding:"5px 12px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>{children}</button>;
 }
 
 function SyncDot({ connected }) {
   return (
     <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-      <div style={{
-        width:7, height:7, borderRadius:"50%",
-        background: connected ? "#10B981" : "#EF4444",
-        boxShadow: connected ? "0 0 6px #10B98180" : "0 0 6px #EF444480",
-        animation: connected ? undefined : "pulse 1.5s infinite",
-      }}/>
-      <span style={{ fontSize:10, color:"#64748B", fontFamily:"'Space Mono',monospace" }}>
-        {connected ? "LIVE" : "LOCAL"}
-      </span>
+      <div style={{ width:7, height:7, borderRadius:"50%", background:connected?"#10B981":"#EF4444", boxShadow:connected?"0 0 6px #10B98180":"0 0 6px #EF444480", animation:connected?undefined:"pulse 1.5s infinite" }}/>
+      <span style={{ fontSize:10, color:"#64748B", fontFamily:"'Space Mono',monospace" }}>{connected?"LIVE":"LOCAL"}</span>
     </div>
   );
+}
+
+function GroupBadge({ group, bothGroups }) {
+  if (bothGroups) return <span style={{ fontSize:11, fontWeight:700, color:"#F59E0B", background:"#F59E0B18", padding:"2px 8px", borderRadius:4, border:"1px solid #F59E0B30" }}>BOTH GROUPS</span>;
+  const isEven = group === "even";
+  return <span style={{ fontSize:11, fontWeight:700, color:isEven?"#8B5CF6":"#06B6D4", background:isEven?"#8B5CF618":"#06B6D418", padding:"2px 8px", borderRadius:4, border:`1px solid ${isEven?"#8B5CF630":"#06B6D430"}` }}>{isEven?"EVEN PINS":"ODD PINS"}</span>;
 }
 
 // ─── MAIN APP ───
@@ -268,6 +279,14 @@ export default function HouseJobsApp() {
   const [showJobDetail, setShowJobDetail] = useState(null);
   const [areaFilter, setAreaFilter] = useState(null);
 
+  // Sunday state
+  const [evenPins, setEvenPins] = useState(DEFAULT_EVEN_PINS);
+  const [oddPins, setOddPins] = useState(DEFAULT_ODD_PINS);
+  const [sundayJobs, setSundayJobs] = useState(DEFAULT_SUNDAY_JOBS);
+  const [sundayAssignments, setSundayAssignments] = useState({});
+  const [sundayEditingJob, setSundayEditingJob] = useState(null);
+  const [sundayEditNames, setSundayEditNames] = useState("");
+
   // Setup
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [pwInput, setPwInput] = useState("");
@@ -283,118 +302,131 @@ export default function HouseJobsApp() {
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [setupTab, setSetupTab] = useState("brothers");
   const [saving, setSaving] = useState(false);
+  // Sunday setup
+  const [sunSetupTab, setSunSetupTab] = useState("even");
+  const [sunEditName, setSunEditName] = useState("");
+  const [sunEditJobName, setSunEditJobName] = useState("");
+  const [sunEditJobPeople, setSunEditJobPeople] = useState(2);
+  const [sunEditJobDesc, setSunEditJobDesc] = useState("");
 
-  const skipNextSync = useRef(false);
+  const skipSync = useRef(false);
+  const skipSunSync = useRef(false);
 
   // ─── INIT ───
   useEffect(() => {
     (async () => {
       const connected = await initFirebase();
       setFbConnected(connected);
-
       if (connected) {
         const cfg = await fbGet("config");
         const asg = await fbGet("assignments");
-        if (cfg) {
-          setBrothers(cfg.brothers || DEFAULT_BROTHERS);
-          setJobs(cfg.jobs || DEFAULT_JOBS);
-          setWeeks(cfg.weeks || DEFAULT_WEEKS);
-          setSemesterName(cfg.semesterName || "Fall 2026");
-        }
-        if (asg) {
-          const w = cfg?.weeks || DEFAULT_WEEKS;
-          setAssignments(desanitizeAssignmentKeys(asg, w));
-        } else {
-          const b = cfg?.brothers || DEFAULT_BROTHERS;
-          const j = cfg?.jobs || DEFAULT_JOBS;
-          const w = cfg?.weeks || DEFAULT_WEEKS;
-          const a = generateAssignments(b, j, w);
-          setAssignments(a);
-          await fbSet("assignments", sanitizeAssignmentKeys(a));
-        }
+        const sunCfg = await fbGet("sundayConfig");
+        const sunAsg = await fbGet("sundayAssignments");
+        const w = cfg?.weeks || DEFAULT_WEEKS;
+        if (cfg) { setBrothers(cfg.brothers||DEFAULT_BROTHERS); setJobs(cfg.jobs||DEFAULT_JOBS); setWeeks(w); setSemesterName(cfg.semesterName||"Fall 2026"); }
+        if (asg) { setAssignments(desanitizeObjKeys(asg, w)); } else { const a = generateAssignments(cfg?.brothers||DEFAULT_BROTHERS, cfg?.jobs||DEFAULT_JOBS, w); setAssignments(a); await fbSet("assignments", sanitizeObjKeys(a)); }
+        if (sunCfg) { setEvenPins(sunCfg.evenPins||DEFAULT_EVEN_PINS); setOddPins(sunCfg.oddPins||DEFAULT_ODD_PINS); setSundayJobs(sunCfg.sundayJobs||DEFAULT_SUNDAY_JOBS); }
+        if (sunAsg) { setSundayAssignments(desanitizeObjKeys(sunAsg, w)); } else { const sa = generateSundayAssignments(sunCfg?.evenPins||DEFAULT_EVEN_PINS, sunCfg?.oddPins||DEFAULT_ODD_PINS, sunCfg?.sundayJobs||DEFAULT_SUNDAY_JOBS, w); setSundayAssignments(sa); await fbSet("sundayAssignments", sanitizeObjKeys(sa)); }
 
-        // Live listener for assignments (real-time sync)
-        fbOnValue("assignments", (data) => {
-          if (skipNextSync.current) { skipNextSync.current = false; return; }
-          if (data) {
-            const w = cfg?.weeks || DEFAULT_WEEKS;
-            setAssignments(desanitizeAssignmentKeys(data, w));
-          }
-        });
-        fbOnValue("config", (data) => {
-          if (data) {
-            setBrothers(data.brothers || DEFAULT_BROTHERS);
-            setJobs(data.jobs || DEFAULT_JOBS);
-            setWeeks(data.weeks || DEFAULT_WEEKS);
-            setSemesterName(data.semesterName || "Fall 2026");
-          }
-        });
+        fbOnValue("assignments", data => { if(skipSync.current){skipSync.current=false;return;} if(data){setAssignments(desanitizeObjKeys(data,w));} });
+        fbOnValue("config", data => { if(data){setBrothers(data.brothers||DEFAULT_BROTHERS);setJobs(data.jobs||DEFAULT_JOBS);setWeeks(data.weeks||DEFAULT_WEEKS);setSemesterName(data.semesterName||"Fall 2026");} });
+        fbOnValue("sundayAssignments", data => { if(skipSunSync.current){skipSunSync.current=false;return;} if(data){setSundayAssignments(desanitizeObjKeys(data,w));} });
+        fbOnValue("sundayConfig", data => { if(data){setEvenPins(data.evenPins||DEFAULT_EVEN_PINS);setOddPins(data.oddPins||DEFAULT_ODD_PINS);setSundayJobs(data.sundayJobs||DEFAULT_SUNDAY_JOBS);} });
       } else {
-        // Fallback to window.storage
         try {
           const cfg = await window.storage.get("housejobs:config");
           const asg = await window.storage.get("housejobs:assignments");
-          if (cfg?.value) {
-            const p = JSON.parse(cfg.value);
-            setBrothers(p.brothers || DEFAULT_BROTHERS);
-            setJobs(p.jobs || DEFAULT_JOBS);
-            setWeeks(p.weeks || DEFAULT_WEEKS);
-            setSemesterName(p.semesterName || "Fall 2026");
-            if (asg?.value) setAssignments(JSON.parse(asg.value));
-            else setAssignments(generateAssignments(p.brothers||DEFAULT_BROTHERS, p.jobs||DEFAULT_JOBS, p.weeks||DEFAULT_WEEKS));
-          } else {
-            setAssignments(generateAssignments(DEFAULT_BROTHERS, DEFAULT_JOBS, DEFAULT_WEEKS));
-          }
-        } catch {
-          setAssignments(generateAssignments(DEFAULT_BROTHERS, DEFAULT_JOBS, DEFAULT_WEEKS));
-        }
+          const sunCfg = await window.storage.get("housejobs:sundayConfig");
+          const sunAsg = await window.storage.get("housejobs:sundayAssignments");
+          if(cfg?.value){const p=JSON.parse(cfg.value);setBrothers(p.brothers||DEFAULT_BROTHERS);setJobs(p.jobs||DEFAULT_JOBS);setWeeks(p.weeks||DEFAULT_WEEKS);setSemesterName(p.semesterName||"Fall 2026");}
+          if(asg?.value) setAssignments(JSON.parse(asg.value)); else setAssignments(generateAssignments(DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_WEEKS));
+          if(sunCfg?.value){const p=JSON.parse(sunCfg.value);setEvenPins(p.evenPins||DEFAULT_EVEN_PINS);setOddPins(p.oddPins||DEFAULT_ODD_PINS);setSundayJobs(p.sundayJobs||DEFAULT_SUNDAY_JOBS);}
+          if(sunAsg?.value) setSundayAssignments(JSON.parse(sunAsg.value)); else setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS));
+        } catch { setAssignments(generateAssignments(DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_WEEKS)); setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS)); }
       }
       setLoading(false);
     })();
   }, []);
 
-  // ─── SAVE HELPERS ───
-  const saveAssignments = useCallback(async (a) => {
-    if (fbConnected) {
-      skipNextSync.current = true;
-      await fbSet("assignments", sanitizeAssignmentKeys(a));
-    } else {
-      try { await window.storage.set("housejobs:assignments", JSON.stringify(a)); } catch {}
-    }
-  }, [fbConnected]);
+  // ─── SAVE ───
+  const saveAssignments = useCallback(async a => { if(fbConnected){skipSync.current=true;await fbSet("assignments",sanitizeObjKeys(a));}else{try{await window.storage.set("housejobs:assignments",JSON.stringify(a));}catch{}} }, [fbConnected]);
+  const saveConfig = useCallback(async (b,j,w,sn) => { if(fbConnected){await fbSet("config",{brothers:b,jobs:j,weeks:w,semesterName:sn});}else{try{await window.storage.set("housejobs:config",JSON.stringify({brothers:b,jobs:j,weeks:w,semesterName:sn}));}catch{}} }, [fbConnected]);
+  const saveSundayAssignments = useCallback(async a => { if(fbConnected){skipSunSync.current=true;await fbSet("sundayAssignments",sanitizeObjKeys(a));}else{try{await window.storage.set("housejobs:sundayAssignments",JSON.stringify(a));}catch{}} }, [fbConnected]);
+  const saveSundayConfig = useCallback(async (ep,op,sj) => { if(fbConnected){await fbSet("sundayConfig",{evenPins:ep,oddPins:op,sundayJobs:sj});}else{try{await window.storage.set("housejobs:sundayConfig",JSON.stringify({evenPins:ep,oddPins:op,sundayJobs:sj}));}catch{}} }, [fbConnected]);
 
-  const saveConfig = useCallback(async (b, j, w, sn) => {
-    if (fbConnected) {
-      await fbSet("config", { brothers:b, jobs:j, weeks:w, semesterName:sn });
-    } else {
-      try { await window.storage.set("housejobs:config", JSON.stringify({ brothers:b, jobs:j, weeks:w, semesterName:sn })); } catch {}
-    }
-  }, [fbConnected]);
-
-  // ─── PASSWORD CHECK ───
+  // ─── PASSWORD ───
   async function checkPassword() {
     const hash = await hashPassword(pwInput);
-    // Hardcoded expected hash of "HM1963"
-    const expected = "d85802bb9e9169949367f292bfdf4ca200139b4c44bc47a50700535f16fba13e";
-    if (hash === expected) {
-      setAdminUnlocked(true);
-      setPwError(false);
-    } else {
-      setPwError(true);
-    }
+    if (hash === "d85802bb9e9169949367f292bfdf4ca200139b4c44bc47a50700535f16fba13e") { setAdminUnlocked(true); setPwError(false); } else { setPwError(true); }
   }
 
   const currentWeek = weeks[currentWeekIdx] || "";
   const weekData = assignments[currentWeek] || {};
+  const sunWeekData = sundayAssignments[currentWeek] || { group:"even", bothGroups:false, jobs:{} };
 
-  function cycleStatus(week, jobId) {
+  function cycleStatus(week, jobId, isAdmin) {
     setAssignments(prev => {
-      const u = JSON.parse(JSON.stringify(prev));
-      if (u[week]?.[jobId]) {
-        const cur = u[week][jobId].status;
-        u[week][jobId].status = STATUS_CYCLE[(STATUS_CYCLE.indexOf(cur)+1) % STATUS_CYCLE.length];
+      const u=JSON.parse(JSON.stringify(prev));
+      if(u[week]?.[jobId]){
+        const c=u[week][jobId].status;
+        if(isAdmin){
+          // Admin can cycle through all: pending→done→missed→verified→pending
+          u[week][jobId].status=STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length];
+        } else {
+          // Brothers can only toggle pending↔done
+          if(c==="pending") u[week][jobId].status="done";
+          else if(c==="done") u[week][jobId].status="pending";
+          // Can't change missed or verified without admin
+        }
       }
-      saveAssignments(u);
+      saveAssignments(u); return u;
+    });
+  }
+
+  function cycleSundayStatus(week, jobId, isAdmin) {
+    setSundayAssignments(prev => {
+      const u=JSON.parse(JSON.stringify(prev));
+      if(u[week]?.jobs?.[jobId]){
+        const c=u[week].jobs[jobId].status;
+        if(isAdmin){
+          u[week].jobs[jobId].status=STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length];
+        } else {
+          if(c==="pending") u[week].jobs[jobId].status="done";
+          else if(c==="done") u[week].jobs[jobId].status="pending";
+        }
+      }
+      saveSundayAssignments(u); return u;
+    });
+  }
+
+  function toggleBothGroups(week) {
+    setSundayAssignments(prev => {
+      const u = JSON.parse(JSON.stringify(prev));
+      if (u[week]) {
+        u[week].bothGroups = !u[week].bothGroups;
+        // Regenerate assignments for this week with new pool
+        const regen = regenerateSundayWeek(u[week], evenPins, oddPins, sundayJobs);
+        u[week] = regen;
+      }
+      saveSundayAssignments(u);
+      return u;
+    });
+  }
+
+  function overrideSundayJob(week, jobId, newNames) {
+    setSundayAssignments(prev => {
+      const u = JSON.parse(JSON.stringify(prev));
+      if (u[week]?.jobs?.[jobId]) { u[week].jobs[jobId].assigned = newNames; }
+      saveSundayAssignments(u);
+      return u;
+    });
+  }
+
+  function reshuffleSundayWeek(week) {
+    setSundayAssignments(prev => {
+      const u = JSON.parse(JSON.stringify(prev));
+      if (u[week]) { u[week] = regenerateSundayWeek(u[week], evenPins, oddPins, sundayJobs); }
+      saveSundayAssignments(u);
       return u;
     });
   }
@@ -402,25 +434,19 @@ export default function HouseJobsApp() {
   async function regenerate() {
     setSaving(true);
     const a = generateAssignments(brothers, jobs, weeks);
-    setAssignments(a);
-    await saveAssignments(a);
+    const sa = generateSundayAssignments(evenPins, oddPins, sundayJobs, weeks);
+    setAssignments(a); setSundayAssignments(sa);
+    await saveAssignments(a); await saveSundayAssignments(sa);
     await saveConfig(brothers, jobs, weeks, semesterName);
-    setConfirmRegen(false);
-    setCurrentWeekIdx(0);
-    setView("dashboard");
-    setSaving(false);
+    await saveSundayConfig(evenPins, oddPins, sundayJobs);
+    setConfirmRegen(false); setCurrentWeekIdx(0); setView("dashboard"); setSaving(false);
   }
 
+  // ─── STATS ───
   const stats = useMemo(() => {
     const s = {};
     brothers.forEach(b => { s[b] = { total:0, done:0, missed:0, verified:0, pending:0 }; });
-    Object.values(assignments).forEach(wj => {
-      if (!wj || typeof wj !== "object") return;
-      Object.values(wj).forEach(entry => {
-        if (!entry?.assigned) return;
-        entry.assigned.forEach(b => { if(s[b]) { s[b].total++; s[b][entry.status]++; } });
-      });
-    });
+    Object.values(assignments).forEach(wj => { if(!wj||typeof wj!=="object")return; Object.values(wj).forEach(entry => { if(!entry?.assigned)return; entry.assigned.forEach(b => { if(s[b]){s[b].total++;s[b][entry.status]++;} }); }); });
     return s;
   }, [assignments, brothers]);
 
@@ -431,7 +457,7 @@ export default function HouseJobsApp() {
     return { total, done, missed, pending:total-done-missed };
   }, [weekData]);
 
-  const completionPct = weekStats.total > 0 ? Math.round((weekStats.done/weekStats.total)*100) : 0;
+  const completionPct = weekStats.total>0 ? Math.round((weekStats.done/weekStats.total)*100) : 0;
 
   if (loading) return (
     <div style={{ fontFamily:"'DM Sans',sans-serif", background:"#0F1117", color:"#64748B", minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:12 }}>
@@ -441,7 +467,6 @@ export default function HouseJobsApp() {
     </div>
   );
 
-  // ─── FIREBASE NOT CONFIGURED WARNING ───
   const showFirebaseWarning = !fbConnected && FIREBASE_CONFIG.apiKey === "YOUR_API_KEY";
 
   return (
@@ -468,13 +493,13 @@ export default function HouseJobsApp() {
             </div>
             <p style={{ fontSize:12, color:"#64748B", marginTop:2, fontFamily:"'Space Mono',monospace" }}>{semesterName} • Week {currentWeekIdx+1}/{weeks.length}</p>
           </div>
-          {view !== "setup" && (
+          {!["setup","sunday_setup"].includes(view) && (
             <div style={{ width:52, height:52, borderRadius:"50%", background:`conic-gradient(#10B981 ${completionPct*3.6}deg,#1E293B ${completionPct*3.6}deg)`, display:"flex", alignItems:"center", justifyContent:"center" }}>
               <div style={{ width:42, height:42, borderRadius:"50%", background:"#0F172A", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color:"#10B981", fontFamily:"'Space Mono',monospace" }}>{completionPct}%</div>
             </div>
           )}
         </div>
-        {view !== "setup" && (
+        {!["setup","sunday_setup"].includes(view) && (
           <div style={{ display:"flex", gap:8, alignItems:"center" }}>
             <button onClick={() => setCurrentWeekIdx(Math.max(0,currentWeekIdx-1))} style={{ background:"#1E293B", border:"1px solid #334155", color:"#94A3B8", borderRadius:6, width:32, height:32, cursor:"pointer", fontSize:16, fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center" }}>‹</button>
             <div style={{ flex:1, background:"#1E293B", border:"1px solid #334155", borderRadius:8, padding:"8px 14px", textAlign:"center", fontSize:14, fontWeight:600, color:"#CBD5E1", fontFamily:"'Space Mono',monospace" }}>{currentWeek}</div>
@@ -483,29 +508,27 @@ export default function HouseJobsApp() {
         )}
       </div>
 
-      {/* FIREBASE WARNING */}
       {showFirebaseWarning && (
         <div style={{ margin:"12px 20px 0", background:"#78350F30", border:"1px solid #F59E0B50", borderRadius:10, padding:"12px 16px" }}>
           <p style={{ fontSize:12, color:"#FCD34D", fontWeight:600, marginBottom:4 }}>⚠ Firebase not configured</p>
-          <p style={{ fontSize:11, color:"#D97706", lineHeight:1.5 }}>
-            Data is stored locally only. To enable live sync for all brothers, open this file and paste your Firebase config. See the setup instructions at the top of the code.
-          </p>
+          <p style={{ fontSize:11, color:"#D97706", lineHeight:1.5 }}>Data stored locally only. Paste Firebase config to enable live sync.</p>
         </div>
       )}
 
       {/* NAV */}
-      <div style={{ display:"flex", gap:2, padding:"12px 20px 0", borderBottom:"1px solid #1E293B", background:"#0F1117" }}>
+      <div style={{ display:"flex", gap:1, padding:"12px 16px 0", borderBottom:"1px solid #1E293B", background:"#0F1117", overflowX:"auto" }}>
         {[
-          { key:"dashboard", label:"This Week" },
+          { key:"dashboard", label:"Weekly" },
+          { key:"sunday", label:"Sunday" },
           { key:"roster", label:"Roster" },
           { key:"leaderboard", label:"Board" },
-          { key:"setup", label:"⚙ Setup" },
+          { key:"setup", label:"⚙" },
         ].map(tab => (
           <button key={tab.key} onClick={() => { setView(tab.key); setSelectedBrother(null); }} style={{
-            flex:1, padding:"10px 0 12px", background:"none", border:"none",
-            color:view===tab.key?"#F8FAFC":"#64748B", fontSize:13, fontWeight:view===tab.key?700:500,
+            flex:1, padding:"10px 0 12px", background:"none", border:"none", minWidth:0,
+            color:view===tab.key?"#F8FAFC":"#64748B", fontSize:12, fontWeight:view===tab.key?700:500,
             cursor:"pointer", fontFamily:"inherit",
-            borderBottom:view===tab.key?`2px solid ${tab.key==="setup"?"#F59E0B":"#10B981"}`:"2px solid transparent",
+            borderBottom:view===tab.key?`2px solid ${tab.key==="setup"?"#F59E0B":tab.key==="sunday"?"#8B5CF6":"#10B981"}`:"2px solid transparent",
           }}>{tab.label}</button>
         ))}
       </div>
@@ -517,7 +540,7 @@ export default function HouseJobsApp() {
         {view === "dashboard" && (
           <div className="fu">
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:20 }}>
-              {[{ n:weekStats.done,l:"Done",c:"#10B981" },{ n:weekStats.pending,l:"Pending",c:"#F59E0B" },{ n:weekStats.missed,l:"Missed",c:"#EF4444" }].map(s => (
+              {[{n:weekStats.done,l:"Done",c:"#10B981"},{n:weekStats.pending,l:"Pending",c:"#F59E0B"},{n:weekStats.missed,l:"Missed",c:"#EF4444"}].map(s => (
                 <div key={s.l} style={{ background:"#1E293B", borderRadius:10, padding:"14px 12px", textAlign:"center", border:"1px solid #334155" }}>
                   <div style={{ fontSize:26, fontWeight:700, color:s.c, fontFamily:"'Space Mono',monospace", lineHeight:1 }}>{s.n}</div>
                   <div style={{ fontSize:11, color:"#64748B", marginTop:4, fontWeight:500 }}>{s.l}</div>
@@ -541,16 +564,15 @@ export default function HouseJobsApp() {
                         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                           <div style={{ width:8,height:8,borderRadius:"50%",background:area.color,boxShadow:`0 0 6px ${area.color}60`,flexShrink:0 }}/>
                           <span style={{ fontSize:14,fontWeight:600,color:"#F1F5F9" }}>{job.name}</span>
-                          {job.rotating && <span style={{ fontSize:10,color:"#F59E0B",background:"#F59E0B18",padding:"1px 7px",borderRadius:4,fontWeight:600,border:"1px solid #F59E0B30" }}>ROTATING</span>}
+                          {job.rotating && <span style={{ fontSize:10,color:"#F59E0B",background:"#F59E0B18",padding:"1px 7px",borderRadius:4,fontWeight:600,border:"1px solid #F59E0B30" }}>ROT</span>}
                         </div>
                         <div style={{ fontSize:13,color:"#94A3B8",marginTop:4,marginLeft:16 }}>{data.assigned?.join(", ")}</div>
                       </div>
-                      <StatusBadge status={data.status} onClick={e => { e.stopPropagation(); cycleStatus(currentWeek,job.id); }} />
+                      <StatusBadge status={data.status} onClick={e => { e.stopPropagation(); cycleStatus(currentWeek,job.id,adminUnlocked); }} />
                     </div>
                     {showJobDetail===job.id && (
                       <div style={{ marginTop:12,paddingTop:12,borderTop:"1px solid #334155",fontSize:12,color:"#64748B",lineHeight:1.6 }}>
-                        <span style={{ color:"#94A3B8",fontWeight:600 }}>What to do: </span>{job.desc}<br/>
-                        <span style={{ color:"#94A3B8",fontWeight:600 }}>Area: </span><span style={{ color:area.color }}>{area.label}</span>
+                        <span style={{ color:"#94A3B8",fontWeight:600 }}>What to do: </span>{job.desc}
                       </div>
                     )}
                   </div>
@@ -560,11 +582,166 @@ export default function HouseJobsApp() {
           </div>
         )}
 
+        {/* ══════ SUNDAY CLEANING ══════ */}
+        {view === "sunday" && (
+          <div className="fu">
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <div>
+                <h2 style={{ fontSize:16, fontWeight:700, color:"#F1F5F9", marginBottom:4 }}>Sunday Cleaning</h2>
+                <GroupBadge group={sunWeekData.group} bothGroups={sunWeekData.bothGroups} />
+              </div>
+              {adminUnlocked && (
+                <div style={{ display:"flex", gap:6 }}>
+                  <SmallBtn onClick={() => toggleBothGroups(currentWeek)} color="#F59E0B">{sunWeekData.bothGroups ? "Split" : "Both"}</SmallBtn>
+                  <SmallBtn onClick={() => reshuffleSundayWeek(currentWeek)} color="#8B5CF6">Shuffle</SmallBtn>
+                </div>
+              )}
+            </div>
+
+            {!adminUnlocked && (
+              <div style={{ background:"#1E293B", borderRadius:10, padding:"10px 14px", border:"1px solid #334155", marginBottom:16, display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:12, color:"#64748B" }}>🔒 HM access required to edit. </span>
+                <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Password" style={{ flex:1, padding:"6px 10px", fontSize:12 }} />
+                <SmallBtn onClick={checkPassword}>Unlock</SmallBtn>
+              </div>
+            )}
+
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {sundayJobs.map((job, i) => {
+                const data = sunWeekData.jobs?.[job.id];
+                if (!data) return null;
+                const isEditing = sundayEditingJob === job.id;
+                return (
+                  <div key={job.id} className="fu" style={{ background:"#1E293B", borderRadius:12, padding:"14px 16px", border:"1px solid #334155", animationDelay:`${i*.03}s` }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                          <div style={{ width:8, height:8, borderRadius:"50%", background:"#8B5CF6", boxShadow:"0 0 6px #8B5CF660", flexShrink:0 }}/>
+                          <span style={{ fontSize:14, fontWeight:600, color:"#F1F5F9" }}>{job.name}</span>
+                          <span style={{ fontSize:10, color:"#64748B" }}>×{job.people}</span>
+                        </div>
+                        <div style={{ fontSize:13, color:"#94A3B8", marginTop:4, marginLeft:16 }}>{data.assigned?.join(", ")}</div>
+                        <div style={{ fontSize:11, color:"#475569", marginTop:4, marginLeft:16, lineHeight:1.4 }}>{job.desc}</div>
+                      </div>
+                      <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                        {adminUnlocked && (
+                          <button onClick={() => { if(isEditing){setSundayEditingJob(null);}else{setSundayEditingJob(job.id);setSundayEditNames(data.assigned?.join(", ")||"");} }}
+                            style={{ background:"none", border:"none", color:"#64748B", cursor:"pointer", fontSize:14, padding:"0 4px" }}>✏️</button>
+                        )}
+                        <StatusBadge status={data.status} onClick={e => { e.stopPropagation(); cycleSundayStatus(currentWeek, job.id, adminUnlocked); }} />
+                      </div>
+                    </div>
+                    {isEditing && adminUnlocked && (
+                      <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid #334155", display:"flex", gap:8 }}>
+                        <Input value={sundayEditNames} onChange={setSundayEditNames} placeholder="Names, comma separated" style={{ flex:1, padding:"6px 10px", fontSize:12 }} />
+                        <SmallBtn onClick={() => { overrideSundayJob(currentWeek, job.id, sundayEditNames.split(",").map(n=>n.trim()).filter(Boolean)); setSundayEditingJob(null); }}>Save</SmallBtn>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {adminUnlocked && (
+              <button onClick={() => setView("sunday_setup")} style={{ marginTop:20, width:"100%", background:"#1E293B", border:"1px solid #334155", color:"#94A3B8", borderRadius:10, padding:"12px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+                ⚙ Edit Sunday Roster & Jobs
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ══════ SUNDAY SETUP ══════ */}
+        {view === "sunday_setup" && adminUnlocked && (
+          <div className="fu">
+            <button onClick={() => setView("sunday")} style={{ background:"none",border:"none",color:"#8B5CF6",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0 }}>← Back to Sunday</button>
+            <h2 style={{ fontSize:16, fontWeight:700, color:"#F1F5F9", marginBottom:16 }}>Sunday Cleaning Setup</h2>
+
+            <div style={{ display:"flex", gap:6, marginBottom:16 }}>
+              {[{key:"even",label:`Even (${evenPins.length})`},{key:"odd",label:`Odd (${oddPins.length})`},{key:"sunjobs",label:`Jobs (${sundayJobs.length})`}].map(t => (
+                <button key={t.key} onClick={() => setSunSetupTab(t.key)} style={{ flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:sunSetupTab===t.key?"#8B5CF618":"#1E293B",border:`1px solid ${sunSetupTab===t.key?"#8B5CF6":"#334155"}`,color:sunSetupTab===t.key?"#8B5CF6":"#94A3B8" }}>{t.label}</button>
+              ))}
+            </div>
+
+            {sunSetupTab === "even" && (
+              <div>
+                <div style={{ display:"flex",gap:8,marginBottom:12 }}>
+                  <Input value={sunEditName} onChange={setSunEditName} placeholder="Add even pin brother..." style={{ flex:1 }} />
+                  <SmallBtn onClick={() => { if(sunEditName.trim()&&!evenPins.includes(sunEditName.trim())){const n=[...evenPins,sunEditName.trim()];setEvenPins(n);saveSundayConfig(n,oddPins,sundayJobs);setSunEditName("");} }} color="#8B5CF6">+ Add</SmallBtn>
+                </div>
+                <div style={{ display:"flex",flexDirection:"column",gap:4 }}>
+                  {evenPins.map((b,i) => (
+                    <div key={i} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1E293B",borderRadius:8,padding:"8px 12px",border:"1px solid #334155" }}>
+                      <span style={{ fontSize:14,color:"#CBD5E1" }}>{b}</span>
+                      <button onClick={() => {const n=evenPins.filter((_,j)=>j!==i);setEvenPins(n);saveSundayConfig(n,oddPins,sundayJobs);}} style={{ background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,fontFamily:"inherit",padding:"0 4px",lineHeight:1 }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {sunSetupTab === "odd" && (
+              <div>
+                <div style={{ display:"flex",gap:8,marginBottom:12 }}>
+                  <Input value={sunEditName} onChange={setSunEditName} placeholder="Add odd pin brother..." style={{ flex:1 }} />
+                  <SmallBtn onClick={() => { if(sunEditName.trim()&&!oddPins.includes(sunEditName.trim())){const n=[...oddPins,sunEditName.trim()];setOddPins(n);saveSundayConfig(evenPins,n,sundayJobs);setSunEditName("");} }} color="#06B6D4">+ Add</SmallBtn>
+                </div>
+                <div style={{ display:"flex",flexDirection:"column",gap:4 }}>
+                  {oddPins.map((b,i) => (
+                    <div key={i} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1E293B",borderRadius:8,padding:"8px 12px",border:"1px solid #334155" }}>
+                      <span style={{ fontSize:14,color:"#CBD5E1" }}>{b}</span>
+                      <button onClick={() => {const n=oddPins.filter((_,j)=>j!==i);setOddPins(n);saveSundayConfig(evenPins,n,sundayJobs);}} style={{ background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,fontFamily:"inherit",padding:"0 4px",lineHeight:1 }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {sunSetupTab === "sunjobs" && (
+              <div>
+                <div style={{ background:"#1E293B",borderRadius:10,padding:14,border:"1px solid #334155",marginBottom:12 }}>
+                  <Input value={sunEditJobName} onChange={setSunEditJobName} placeholder="Job name..." style={{ marginBottom:8 }} />
+                  <Input value={sunEditJobDesc} onChange={setSunEditJobDesc} placeholder="Description..." style={{ marginBottom:8 }} />
+                  <div style={{ display:"flex",gap:12,alignItems:"center" }}>
+                    <div style={{ display:"flex",alignItems:"center",gap:6 }}>
+                      <label style={{ fontSize:12,color:"#94A3B8" }}>People:</label>
+                      <select value={sunEditJobPeople} onChange={e => setSunEditJobPeople(+e.target.value)} style={{ background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit" }}>
+                        {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ flex:1 }}/>
+                    <SmallBtn onClick={() => {
+                      if(sunEditJobName.trim()){
+                        const n=[...sundayJobs,{id:"sun_"+sunEditJobName.trim().toLowerCase().replace(/\s+/g,"_")+"_"+Date.now(),name:sunEditJobName.trim(),people:sunEditJobPeople,desc:sunEditJobDesc.trim()}];
+                        setSundayJobs(n);saveSundayConfig(evenPins,oddPins,n);setSunEditJobName("");setSunEditJobDesc("");setSunEditJobPeople(2);
+                      }
+                    }} color="#8B5CF6">+ Add</SmallBtn>
+                  </div>
+                </div>
+                <div style={{ display:"flex",flexDirection:"column",gap:4 }}>
+                  {sundayJobs.map((j,i) => (
+                    <div key={j.id} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1E293B",borderRadius:8,padding:"8px 12px",border:"1px solid #334155" }}>
+                      <div>
+                        <span style={{ fontSize:13,color:"#CBD5E1" }}>{j.name}</span>
+                        <span style={{ fontSize:11,color:"#64748B",marginLeft:8 }}>×{j.people}</span>
+                      </div>
+                      <button onClick={() => {const n=sundayJobs.filter((_,k)=>k!==i);setSundayJobs(n);saveSundayConfig(evenPins,oddPins,n);}} style={{ background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,fontFamily:"inherit",padding:"0 4px",lineHeight:1 }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button onClick={() => { const sa=generateSundayAssignments(evenPins,oddPins,sundayJobs,weeks); setSundayAssignments(sa); saveSundayAssignments(sa); setView("sunday"); }} style={{ marginTop:20,width:"100%",background:"linear-gradient(135deg,#8B5CF6,#7C3AED)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>
+              🔄 Regenerate Sunday Assignments
+            </button>
+          </div>
+        )}
+
         {/* ══════ ROSTER ══════ */}
         {view === "roster" && !selectedBrother && (
           <div className="fu">
             <h2 style={{ fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4 }}>Full Roster</h2>
-            <p style={{ fontSize:12,color:"#64748B",marginBottom:16 }}>Tap a name to see their full schedule</p>
+            <p style={{ fontSize:12,color:"#64748B",marginBottom:16 }}>Weekly house jobs roster. Tap for details.</p>
             <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
               {brothers.map((b,i) => {
                 const s = stats[b]||{total:0,done:0,verified:0};
@@ -588,10 +765,10 @@ export default function HouseJobsApp() {
 
         {view === "roster" && selectedBrother && (
           <div className="fu">
-            <button onClick={() => setSelectedBrother(null)} style={{ background:"none",border:"none",color:"#10B981",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0 }}>← Back to Roster</button>
+            <button onClick={() => setSelectedBrother(null)} style={{ background:"none",border:"none",color:"#10B981",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0 }}>← Back</button>
             <div style={{ background:"#1E293B",borderRadius:14,padding:20,border:"1px solid #334155",marginBottom:16 }}>
-              <h2 style={{ fontSize:20,fontWeight:700,color:"#F8FAFC",marginBottom:4 }}>{selectedBrother}</h2>
-              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginTop:14 }}>
+              <h2 style={{ fontSize:20,fontWeight:700,color:"#F8FAFC",marginBottom:14 }}>{selectedBrother}</h2>
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8 }}>
                 {[{n:stats[selectedBrother]?.done||0,l:"Done",c:"#10B981"},{n:stats[selectedBrother]?.verified||0,l:"Verified",c:"#3B82F6"},{n:stats[selectedBrother]?.missed||0,l:"Missed",c:"#EF4444"},{n:stats[selectedBrother]?.pending||0,l:"Pending",c:"#F59E0B"}].map(s => (
                   <div key={s.l} style={{ textAlign:"center" }}>
                     <div style={{ fontSize:22,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace" }}>{s.n}</div>
@@ -615,7 +792,7 @@ export default function HouseJobsApp() {
                           <div style={{ width:6,height:6,borderRadius:"50%",background:(AREA_META[j.area]||{color:"#6B7280"}).color }}/>
                           <span style={{ fontSize:13,color:"#CBD5E1" }}>{j.name}</span>
                         </div>
-                        <StatusBadge status={wj[j.id].status} onClick={() => cycleStatus(week,j.id)} />
+                        <StatusBadge status={wj[j.id].status} onClick={() => cycleStatus(week,j.id,adminUnlocked)} />
                       </div>
                     ))}
                   </div>
@@ -629,7 +806,7 @@ export default function HouseJobsApp() {
         {view === "leaderboard" && (
           <div className="fu">
             <h2 style={{ fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4 }}>Accountability Board</h2>
-            <p style={{ fontSize:12,color:"#64748B",marginBottom:16 }}>Ranked by completion rate</p>
+            <p style={{ fontSize:12,color:"#64748B",marginBottom:16 }}>Weekly jobs ranked by completion</p>
             {brothers.map(b => ({name:b,...stats[b],pct:stats[b]?.total>0?((stats[b].done+(stats[b].verified||0))/stats[b].total)*100:0})).sort((a,b) => b.pct-a.pct).map((b,i) => {
               const medal = i<3?["🥇","🥈","🥉"][i]:null;
               return (
@@ -644,9 +821,7 @@ export default function HouseJobsApp() {
                     </div>
                   </div>
                   <div style={{ width:80 }}>
-                    <div style={{ height:6,background:"#0F172A",borderRadius:3,overflow:"hidden" }}>
-                      <div style={{ height:"100%",borderRadius:3,width:`${Math.round(b.pct)}%`,background:b.pct>=80?"#10B981":b.pct>=50?"#F59E0B":"#EF4444" }}/>
-                    </div>
+                    <div style={{ height:6,background:"#0F172A",borderRadius:3,overflow:"hidden" }}><div style={{ height:"100%",borderRadius:3,width:`${Math.round(b.pct)}%`,background:b.pct>=80?"#10B981":b.pct>=50?"#F59E0B":"#EF4444" }}/></div>
                     <div style={{ fontSize:11,textAlign:"right",marginTop:3,fontWeight:700,fontFamily:"'Space Mono',monospace",color:b.pct>=80?"#10B981":b.pct>=50?"#F59E0B":"#EF4444" }}>{Math.round(b.pct)}%</div>
                   </div>
                 </div>
@@ -667,34 +842,23 @@ export default function HouseJobsApp() {
           </div>
         )}
 
-        {/* ══════ SETUP (PASSWORD PROTECTED) ══════ */}
+        {/* ══════ SETUP (PASSWORD) ══════ */}
         {view === "setup" && !adminUnlocked && (
-          <div className="fu" style={{ maxWidth:340, margin:"40px auto", textAlign:"center" }}>
+          <div className="fu" style={{ maxWidth:340,margin:"40px auto",textAlign:"center" }}>
             <div style={{ width:64,height:64,borderRadius:16,background:"#F59E0B18",border:"1px solid #F59E0B40",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",fontSize:28 }}>🔒</div>
             <h2 style={{ fontSize:18,fontWeight:700,color:"#F1F5F9",marginBottom:6 }}>House Manager Access</h2>
-            <p style={{ fontSize:13,color:"#64748B",marginBottom:24,lineHeight:1.5 }}>Enter the admin password to edit the roster, jobs, and semester settings.</p>
-            <Input type="password" value={pwInput} onChange={v => { setPwInput(v); setPwError(false); }} placeholder="Enter password..."
-              style={{ textAlign:"center", fontSize:16, letterSpacing:"0.1em", marginBottom:12, borderColor:pwError?"#EF4444":"#334155" }} />
-            {pwError && <p style={{ fontSize:12,color:"#EF4444",marginBottom:12 }}>Wrong password. Try again.</p>}
-            <button onClick={checkPassword} style={{
-              width:"100%", background:"linear-gradient(135deg,#F59E0B,#D97706)", border:"none",
-              color:"#FFF", borderRadius:10, padding:"14px", fontSize:15, fontWeight:700,
-              cursor:"pointer", fontFamily:"inherit",
-            }}>Unlock Setup</button>
+            <p style={{ fontSize:13,color:"#64748B",marginBottom:24,lineHeight:1.5 }}>Enter the admin password to edit settings.</p>
+            <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Enter password..." style={{ textAlign:"center",fontSize:16,letterSpacing:"0.1em",marginBottom:12,borderColor:pwError?"#EF4444":"#334155" }} />
+            {pwError && <p style={{ fontSize:12,color:"#EF4444",marginBottom:12 }}>Wrong password.</p>}
+            <button onClick={checkPassword} style={{ width:"100%",background:"linear-gradient(135deg,#F59E0B,#D97706)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>Unlock</button>
           </div>
         )}
 
         {view === "setup" && adminUnlocked && (
           <div className="fu">
             <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
-              <div>
-                <h2 style={{ fontSize:16,fontWeight:700,color:"#F1F5F9" }}>Semester Setup</h2>
-                <p style={{ fontSize:12,color:"#64748B" }}>Edit roster, jobs, weeks. Regenerate to apply.</p>
-              </div>
-              <button onClick={() => { setAdminUnlocked(false); setPwInput(""); }} style={{
-                background:"#1E293B", border:"1px solid #334155", color:"#94A3B8",
-                borderRadius:6, padding:"5px 10px", fontSize:11, cursor:"pointer", fontFamily:"inherit",
-              }}>🔒 Lock</button>
+              <h2 style={{ fontSize:16,fontWeight:700,color:"#F1F5F9" }}>Weekly Setup</h2>
+              <button onClick={() => {setAdminUnlocked(false);setPwInput("");}} style={{ background:"#1E293B",border:"1px solid #334155",color:"#94A3B8",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit" }}>🔒 Lock</button>
             </div>
 
             <div style={{ marginBottom:20 }}>
@@ -718,7 +882,7 @@ export default function HouseJobsApp() {
                   {brothers.map((b,i) => (
                     <div key={i} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1E293B",borderRadius:8,padding:"8px 12px",border:"1px solid #334155" }}>
                       <span style={{ fontSize:14,color:"#CBD5E1" }}>{b}</span>
-                      <button onClick={() => setBrothers(brothers.filter((_,j) => j!==i))} style={{ background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,fontFamily:"inherit",padding:"0 4px",lineHeight:1 }}>×</button>
+                      <button onClick={() => setBrothers(brothers.filter((_,j)=>j!==i))} style={{ background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,fontFamily:"inherit",padding:"0 4px",lineHeight:1 }}>×</button>
                     </div>
                   ))}
                 </div>
@@ -730,7 +894,7 @@ export default function HouseJobsApp() {
                 <div style={{ background:"#1E293B",borderRadius:10,padding:14,border:"1px solid #334155",marginBottom:12 }}>
                   <div style={{ display:"flex",gap:8,marginBottom:8 }}>
                     <Input value={editJobName} onChange={setEditJobName} placeholder="Job name..." style={{ flex:1 }} />
-                    <select value={editJobArea} onChange={e => setEditJobArea(e.target.value)} style={{ background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 14px",fontSize:13,fontFamily:"inherit" }}>
+                    <select value={editJobArea} onChange={e=>setEditJobArea(e.target.value)} style={{ background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 14px",fontSize:13,fontFamily:"inherit" }}>
                       {AREA_KEYS.map(k => <option key={k} value={k}>{AREA_META[k].label}</option>)}
                     </select>
                   </div>
@@ -738,20 +902,17 @@ export default function HouseJobsApp() {
                   <div style={{ display:"flex",gap:12,alignItems:"center",flexWrap:"wrap" }}>
                     <div style={{ display:"flex",alignItems:"center",gap:6 }}>
                       <label style={{ fontSize:12,color:"#94A3B8" }}>People:</label>
-                      <select value={editJobPeople} onChange={e => setEditJobPeople(+e.target.value)} style={{ background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit" }}>
+                      <select value={editJobPeople} onChange={e=>setEditJobPeople(+e.target.value)} style={{ background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit" }}>
                         <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option>
                       </select>
                     </div>
                     <label style={{ display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer" }}>
-                      <input type="checkbox" checked={editJobRotating} onChange={e => setEditJobRotating(e.target.checked)} style={{ accentColor:"#F59E0B" }} /> Rotating
+                      <input type="checkbox" checked={editJobRotating} onChange={e=>setEditJobRotating(e.target.checked)} style={{ accentColor:"#F59E0B" }} /> Rotating
                     </label>
                     <div style={{ flex:1 }}/>
                     <SmallBtn onClick={() => {
-                      if(editJobName.trim()){
-                        setJobs([...jobs,{id:editJobName.trim().toLowerCase().replace(/\s+/g,"_")+"_"+Date.now(),name:editJobName.trim(),area:editJobArea,people:editJobPeople,desc:editJobDesc.trim(),rotating:editJobRotating}]);
-                        setEditJobName("");setEditJobDesc("");setEditJobPeople(1);setEditJobRotating(false);
-                      }
-                    }}>+ Add Job</SmallBtn>
+                      if(editJobName.trim()){setJobs([...jobs,{id:editJobName.trim().toLowerCase().replace(/\s+/g,"_")+"_"+Date.now(),name:editJobName.trim(),area:editJobArea,people:editJobPeople,desc:editJobDesc.trim(),rotating:editJobRotating}]);setEditJobName("");setEditJobDesc("");setEditJobPeople(1);setEditJobRotating(false);}
+                    }}>+ Add</SmallBtn>
                   </div>
                 </div>
                 <div style={{ display:"flex",flexDirection:"column",gap:4 }}>
@@ -763,7 +924,7 @@ export default function HouseJobsApp() {
                         <span style={{ fontSize:11,color:"#64748B" }}>×{j.people}</span>
                         {j.rotating && <span style={{ fontSize:10,color:"#F59E0B" }}>ROT</span>}
                       </div>
-                      <button onClick={() => setJobs(jobs.filter((_,k) => k!==i))} style={{ background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,fontFamily:"inherit",padding:"0 4px",lineHeight:1 }}>×</button>
+                      <button onClick={() => setJobs(jobs.filter((_,k)=>k!==i))} style={{ background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,fontFamily:"inherit",padding:"0 4px",lineHeight:1 }}>×</button>
                     </div>
                   ))}
                 </div>
@@ -773,9 +934,9 @@ export default function HouseJobsApp() {
             {setupTab === "weeks" && (
               <div>
                 <div style={{ display:"flex",gap:8,marginBottom:12,alignItems:"center" }}>
-                  <Input value={editWeekStart} onChange={setEditWeekStart} placeholder="Start (e.g. 1/13)" style={{ flex:1 }} />
+                  <Input value={editWeekStart} onChange={setEditWeekStart} placeholder="Start" style={{ flex:1 }} />
                   <span style={{ color:"#64748B" }}>–</span>
-                  <Input value={editWeekEnd} onChange={setEditWeekEnd} placeholder="End (e.g. 1/19)" style={{ flex:1 }} />
+                  <Input value={editWeekEnd} onChange={setEditWeekEnd} placeholder="End" style={{ flex:1 }} />
                   <SmallBtn onClick={() => { if(editWeekStart.trim()&&editWeekEnd.trim()){setWeeks([...weeks,`${editWeekStart.trim()}-${editWeekEnd.trim()}`]);setEditWeekStart("");setEditWeekEnd("");} }}>+ Add</SmallBtn>
                 </div>
                 <div style={{ display:"flex",flexDirection:"column",gap:4 }}>
@@ -785,7 +946,7 @@ export default function HouseJobsApp() {
                         <span style={{ fontSize:11,color:"#64748B",fontFamily:"'Space Mono',monospace",width:24 }}>{i+1}</span>
                         <span style={{ fontSize:13,color:"#CBD5E1",fontFamily:"'Space Mono',monospace" }}>{w}</span>
                       </div>
-                      <button onClick={() => setWeeks(weeks.filter((_,j) => j!==i))} style={{ background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,fontFamily:"inherit",padding:"0 4px",lineHeight:1 }}>×</button>
+                      <button onClick={() => setWeeks(weeks.filter((_,j)=>j!==i))} style={{ background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,fontFamily:"inherit",padding:"0 4px",lineHeight:1 }}>×</button>
                     </div>
                   ))}
                 </div>
@@ -794,15 +955,10 @@ export default function HouseJobsApp() {
 
             <div style={{ marginTop:24,display:"flex",flexDirection:"column",gap:10 }}>
               {!confirmRegen ? (
-                <button onClick={() => setConfirmRegen(true)} disabled={saving} style={{
-                  background:"linear-gradient(135deg,#10B981,#059669)",border:"none",color:"#FFF",
-                  borderRadius:10,padding:"14px 20px",fontSize:15,fontWeight:700,cursor:"pointer",
-                  fontFamily:"inherit",boxShadow:"0 4px 15px rgba(16,185,129,0.3)",
-                  opacity:saving?0.6:1,
-                }}>{saving ? "Saving..." : "🔄 Regenerate Assignments"}</button>
+                <button onClick={() => setConfirmRegen(true)} disabled={saving} style={{ background:"linear-gradient(135deg,#10B981,#059669)",border:"none",color:"#FFF",borderRadius:10,padding:"14px 20px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 15px rgba(16,185,129,0.3)",opacity:saving?0.6:1 }}>{saving?"Saving...":"🔄 Regenerate All Assignments"}</button>
               ) : (
                 <div style={{ background:"#7F1D1D20",border:"1px solid #EF444450",borderRadius:10,padding:16 }}>
-                  <p style={{ fontSize:13,color:"#FCA5A5",marginBottom:12,lineHeight:1.5 }}>This will erase all status tracking and create fresh assignments. Everyone will see the new assignments immediately. Are you sure?</p>
+                  <p style={{ fontSize:13,color:"#FCA5A5",marginBottom:12,lineHeight:1.5 }}>This will erase ALL tracking (weekly + Sunday) and create fresh assignments. Are you sure?</p>
                   <div style={{ display:"flex",gap:8 }}>
                     <button onClick={regenerate} disabled={saving} style={{ flex:1,background:"#EF4444",border:"none",color:"#FFF",borderRadius:8,padding:"10px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>{saving?"Saving...":"Yes, Regenerate"}</button>
                     <button onClick={() => setConfirmRegen(false)} style={{ flex:1,background:"#1E293B",border:"1px solid #334155",color:"#94A3B8",borderRadius:8,padding:"10px",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit" }}>Cancel</button>
