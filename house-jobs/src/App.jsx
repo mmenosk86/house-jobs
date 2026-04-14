@@ -26,21 +26,21 @@ const DEFAULT_BROTHERS = [
 ];
 
 const DEFAULT_JOBS = [
-  { id:"basement", name:"Basement", area:"basement", people:2, desc:"Sweep, mop, wipe surfaces, empty trash", rotating:false },
-  { id:"1bath", name:"1st Floor Bathroom", area:"first", people:1, desc:"Scrub toilet, sink, mirror, mop floor", rotating:false },
-  { id:"pool", name:"Pool Room", area:"first", people:1, desc:"Vacuum, wipe tables, organize", rotating:false },
-  { id:"entrance", name:"Entrance / Basement Stairs", area:"first", people:1, desc:"Sweep stairs, clean entryway, wipe rails", rotating:false },
-  { id:"front", name:"Outside Front / Porch", area:"outside", people:1, desc:"Sweep porch, pick up trash, check chairs", rotating:false },
-  { id:"2hall", name:"2nd Floor Hall / Stairs", area:"second", people:1, desc:"Vacuum hall, wipe rails, clean light switches", rotating:false },
-  { id:"2bath", name:"2nd Floor Bathroom", area:"second", people:2, desc:"Scrub toilet, shower, sink, mop floor", rotating:false },
-  { id:"3hall", name:"3rd Floor Hall / Stairs", area:"third", people:2, desc:"Vacuum hall, wipe rails, clean light switches", rotating:false },
-  { id:"3bath", name:"3rd Floor Bathroom", area:"third", people:1, desc:"Scrub toilet, shower, sink, mop floor", rotating:false },
-  { id:"cups", name:"Big Red Cup Cleaning", area:"common", people:1, desc:"Collect and wash all red cups", rotating:false },
-  { id:"kitchen", name:"Kitchen", area:"common", people:1, desc:"Dishes, wipe counters, sweep, take out trash", rotating:false },
-  { id:"library", name:"Library", area:"common", people:1, desc:"Dust shelves, organize, vacuum", rotating:false },
-  { id:"towels", name:"Clean Towels / Rags", area:"common", people:1, desc:"Wash, dry, fold, distribute", rotating:false },
-  { id:"back", name:"Outside Back / Fire Escape", area:"outside", people:1, desc:"Sweep, clear debris, check fire escape", rotating:false },
-  { id:"chapter", name:"Chapter Room / MiniMub", area:"common", people:2, desc:"Deep clean after events, vacuum, wipe surfaces", rotating:true },
+  { id:"basement", name:"Basement", area:"basement", people:2, desc:"Sweep, mop, wipe surfaces, empty trash", rotating:false, floorRotate:true },
+  { id:"1bath", name:"1st Floor Bathroom", area:"first", people:1, desc:"Scrub toilet, sink, mirror, mop floor", rotating:false, floorRotate:true },
+  { id:"pool", name:"Pool Room", area:"first", people:1, desc:"Vacuum, wipe tables, organize", rotating:false, floorRotate:true },
+  { id:"entrance", name:"Entrance / Basement Stairs", area:"first", people:1, desc:"Sweep stairs, clean entryway, wipe rails", rotating:false, floorRotate:true },
+  { id:"front", name:"Outside Front / Porch", area:"outside", people:1, desc:"Sweep porch, pick up trash, check chairs", rotating:false, floorRotate:false },
+  { id:"2hall", name:"2nd Floor Hall / Stairs", area:"second", people:1, desc:"Vacuum hall, wipe rails, clean light switches", rotating:false, floorRotate:true },
+  { id:"2bath", name:"2nd Floor Bathroom", area:"second", people:2, desc:"Scrub toilet, shower, sink, mop floor", rotating:false, floorRotate:true },
+  { id:"3hall", name:"3rd Floor Hall / Stairs", area:"third", people:2, desc:"Vacuum hall, wipe rails, clean light switches", rotating:false, floorRotate:true },
+  { id:"3bath", name:"3rd Floor Bathroom", area:"third", people:1, desc:"Scrub toilet, shower, sink, mop floor", rotating:false, floorRotate:true },
+  { id:"cups", name:"Big Red Cup Cleaning", area:"common", people:1, desc:"Collect and wash all red cups", rotating:false, floorRotate:false },
+  { id:"kitchen", name:"Kitchen", area:"common", people:1, desc:"Dishes, wipe counters, sweep, take out trash", rotating:false, floorRotate:false },
+  { id:"library", name:"Library", area:"common", people:1, desc:"Dust shelves, organize, vacuum", rotating:false, floorRotate:false },
+  { id:"towels", name:"Clean Towels / Rags", area:"common", people:1, desc:"Wash, dry, fold, distribute", rotating:false, floorRotate:false },
+  { id:"back", name:"Outside Back / Fire Escape", area:"outside", people:1, desc:"Sweep, clear debris, check fire escape", rotating:false, floorRotate:false },
+  { id:"chapter", name:"Chapter Room / MiniMub", area:"common", people:2, desc:"Deep clean after events, vacuum, wipe surfaces", rotating:true, floorRotate:false },
 ];
 
 const DEFAULT_EVEN_PINS = ["Michael M","Derek G","Evan R","Andrew M","Sergio G","Grant M","Nate B","Jacob C","Nic D","Jack D","Daniel K","Michael T","Zach U","Morgan B","Cohl B","Jacob Ch","Michael J","Adlai K","Tyler P","David S","Alex M","James T","Thomas W"];
@@ -177,33 +177,45 @@ function generateAssignments(brothers, jobs, weeks) {
   bList.forEach(b=>{if(!byFloor[b.floor])byFloor[b.floor]=[];byFloor[b.floor].push(b.name);});
   Object.keys(byFloor).forEach(f=>{byFloor[f]=shuffle(byFloor[f]);});
 
-  const asg = {}; const sm = {}; const floorIdx = {};
+  const asg = {};
+  const floorRotIdx = {}; // for floorRotate jobs
+  let globalRotIdx = 0;   // for rotating (global) jobs
 
-  // Static jobs: assign brothers from matching floor, fallback to any
-  jobs.filter(j=>!j.rotating).forEach(job=>{
+  // Pre-compute static assignments (non-rotating, non-floorRotate)
+  const staticMap = {}; const staticFloorIdx = {};
+  jobs.filter(j=>!j.rotating&&!j.floorRotate).forEach(job=>{
     const floor = AREA_TO_FLOOR[job.area];
     const pool = floor && byFloor[floor]?.length ? byFloor[floor] : allNames;
-    if(!floorIdx[job.area]) floorIdx[job.area]=0;
-    const assigned = [];
-    for(let p=0;p<job.people;p++){
-      assigned.push(pool[floorIdx[job.area] % pool.length]);
-      floorIdx[job.area]++;
-    }
-    sm[job.id]=assigned;
+    const key = floor||"all";
+    if(!staticFloorIdx[key]) staticFloorIdx[key]=0;
+    const assigned=[];
+    for(let p=0;p<job.people;p++){assigned.push(pool[(staticFloorIdx[key]+p)%pool.length]);}
+    staticFloorIdx[key]+=job.people;
+    staticMap[job.id]=assigned;
   });
 
-  // Rotating jobs: pull from everyone
-  let ri=0;
-  weeks.forEach(week=>{
+  weeks.forEach((week,wi)=>{
     asg[week]={};
     jobs.forEach(job=>{
-      if(!job.rotating){
-        asg[week][job.id]={assigned:sm[job.id],status:"pending"};
-      }else{
+      if(job.rotating){
+        // Global rotating: cycle through ALL brothers
         const assigned=[];
-        for(let p=0;p<job.people;p++){assigned.push(allNames[(ri+p)%allNames.length]);}
+        for(let p=0;p<job.people;p++){assigned.push(allNames[(globalRotIdx+p)%allNames.length]);}
         asg[week][job.id]={assigned,status:"pending"};
-        ri+=job.people;
+        globalRotIdx+=job.people;
+      }else if(job.floorRotate){
+        // Floor rotating: cycle through only brothers on that floor
+        const floor = AREA_TO_FLOOR[job.area];
+        const pool = floor && byFloor[floor]?.length ? byFloor[floor] : allNames;
+        const key = "frot_"+(floor||"all");
+        if(!floorRotIdx[key]) floorRotIdx[key]=0;
+        const assigned=[];
+        for(let p=0;p<job.people;p++){assigned.push(pool[(floorRotIdx[key]+p)%pool.length]);}
+        asg[week][job.id]={assigned,status:"pending"};
+        floorRotIdx[key]+=job.people;
+      }else{
+        // Static: same people every week
+        asg[week][job.id]={assigned:staticMap[job.id]||[],status:"pending"};
       }
     });
   });
@@ -297,6 +309,7 @@ export default function HouseJobsApp(){
   const[editJobArea,setEditJobArea]=useState("common");
   const[editJobPeople,setEditJobPeople]=useState(1);
   const[editJobRotating,setEditJobRotating]=useState(false);
+  const[editJobFloorRotate,setEditJobFloorRotate]=useState(false);
   const[editJobDesc,setEditJobDesc]=useState("");
   const[editWeekStart,setEditWeekStart]=useState("");
   const[editWeekEnd,setEditWeekEnd]=useState("");
@@ -524,7 +537,7 @@ export default function HouseJobsApp(){
               <div key={job.id} className="ch fu" onClick={()=>setShowJobDetail(showJobDetail===job.id?null:job.id)} style={{background:"#1E293B",borderRadius:12,padding:"14px 16px",border:`1px solid ${data.status==="missed"?"#EF444440":"#334155"}`,animationDelay:`${i*.03}s`,cursor:"pointer"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                   <div style={{flex:1}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:area.color,boxShadow:`0 0 6px ${area.color}60`,flexShrink:0}}/><span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{job.name}</span>{job.rotating&&<span style={{fontSize:10,color:"#F59E0B",background:"#F59E0B18",padding:"1px 7px",borderRadius:4,fontWeight:600,border:"1px solid #F59E0B30"}}>ROT</span>}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:area.color,boxShadow:`0 0 6px ${area.color}60`,flexShrink:0}}/><span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{job.name}</span>{job.rotating&&<span style={{fontSize:10,color:"#F59E0B",background:"#F59E0B18",padding:"1px 7px",borderRadius:4,fontWeight:600,border:"1px solid #F59E0B30"}}>ROT</span>}{job.floorRotate&&<span style={{fontSize:10,color:"#06B6D4",background:"#06B6D418",padding:"1px 7px",borderRadius:4,fontWeight:600,border:"1px solid #06B6D430"}}>FLOOR</span>}</div>
                     <div style={{fontSize:13,color:"#94A3B8",marginTop:4,marginLeft:16}}>{data.assigned?.join(", ")}</div>
                   </div>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -821,9 +834,9 @@ export default function HouseJobsApp(){
             <div style={{background:"#1E293B",borderRadius:10,padding:14,border:"1px solid #334155",marginBottom:12}}>
               <div style={{display:"flex",gap:8,marginBottom:8}}><Input value={editJobName} onChange={setEditJobName} placeholder="Job name..." style={{flex:1}}/><select value={editJobArea} onChange={e=>setEditJobArea(e.target.value)} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 14px",fontSize:13,fontFamily:"inherit"}}>{AREA_KEYS.map(k=><option key={k} value={k}>{AREA_META[k].label}</option>)}</select></div>
               <Input value={editJobDesc} onChange={setEditJobDesc} placeholder="Description..." style={{marginBottom:8}}/>
-              <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"#94A3B8"}}>People:</label><select value={editJobPeople} onChange={e=>setEditJobPeople(+e.target.value)} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></div><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobRotating} onChange={e=>setEditJobRotating(e.target.checked)} style={{accentColor:"#F59E0B"}}/> Rotating</label><div style={{flex:1}}/><SmallBtn onClick={()=>{if(editJobName.trim()){setJobs([...jobs,{id:editJobName.trim().toLowerCase().replace(/\s+/g,"_")+"_"+Date.now(),name:editJobName.trim(),area:editJobArea,people:editJobPeople,desc:editJobDesc.trim(),rotating:editJobRotating}]);setEditJobName("");setEditJobDesc("");setEditJobPeople(1);setEditJobRotating(false);}}}>+ Add</SmallBtn></div>
+              <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"#94A3B8"}}>People:</label><select value={editJobPeople} onChange={e=>setEditJobPeople(+e.target.value)} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></div><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobRotating} onChange={e=>{setEditJobRotating(e.target.checked);if(e.target.checked)setEditJobFloorRotate(false);}} style={{accentColor:"#F59E0B"}}/> Rotating</label><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobFloorRotate} onChange={e=>{setEditJobFloorRotate(e.target.checked);if(e.target.checked)setEditJobRotating(false);}} style={{accentColor:"#06B6D4"}}/> Floor Rotate</label><div style={{flex:1}}/><SmallBtn onClick={()=>{if(editJobName.trim()){setJobs([...jobs,{id:editJobName.trim().toLowerCase().replace(/\s+/g,"_")+"_"+Date.now(),name:editJobName.trim(),area:editJobArea,people:editJobPeople,desc:editJobDesc.trim(),rotating:editJobRotating,floorRotate:editJobFloorRotate}]);setEditJobName("");setEditJobDesc("");setEditJobPeople(1);setEditJobRotating(false);setEditJobFloorRotate(false);}}}>+ Add</SmallBtn></div>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>{jobs.map((j,i)=><div key={j.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1E293B",borderRadius:8,padding:"8px 12px",border:"1px solid #334155"}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:(AREA_META[j.area]||{color:"#6B7280"}).color}}/><span style={{fontSize:13,color:"#CBD5E1"}}>{j.name}</span><span style={{fontSize:11,color:"#64748B"}}>×{j.people}</span>{j.rotating&&<span style={{fontSize:10,color:"#F59E0B"}}>ROT</span>}</div><button onClick={()=>setJobs(jobs.filter((_,k)=>k!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>{jobs.map((j,i)=><div key={j.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1E293B",borderRadius:8,padding:"8px 12px",border:"1px solid #334155"}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:(AREA_META[j.area]||{color:"#6B7280"}).color}}/><span style={{fontSize:13,color:"#CBD5E1"}}>{j.name}</span><span style={{fontSize:11,color:"#64748B"}}>×{j.people}</span>{j.rotating&&<span style={{fontSize:10,color:"#F59E0B"}}>ROT</span>}{j.floorRotate&&<span style={{fontSize:10,color:"#06B6D4"}}>FLOOR</span>}</div><button onClick={()=>setJobs(jobs.filter((_,k)=>k!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div>
           </div>}
           {setupTab==="weeks"&&<div><div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center"}}><Input value={editWeekStart} onChange={setEditWeekStart} placeholder="Start" style={{flex:1}}/><span style={{color:"#64748B"}}>–</span><Input value={editWeekEnd} onChange={setEditWeekEnd} placeholder="End" style={{flex:1}}/><SmallBtn onClick={()=>{if(editWeekStart.trim()&&editWeekEnd.trim()){setWeeks([...weeks,`${editWeekStart.trim()}-${editWeekEnd.trim()}`]);setEditWeekStart("");setEditWeekEnd("");}}}>+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{weeks.map((w,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:i===currentWeekIdx?"#10B98118":"#1E293B",borderRadius:8,padding:"8px 12px",border:`1px solid ${i===currentWeekIdx?"#10B981":"#334155"}`}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:11,color:"#64748B",fontFamily:"'Space Mono',monospace",width:24}}>{i+1}</span><span style={{fontSize:13,color:"#CBD5E1",fontFamily:"'Space Mono',monospace"}}>{w}</span></div><button onClick={()=>setWeeks(weeks.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
           <div style={{marginTop:24,display:"flex",flexDirection:"column",gap:10}}>
