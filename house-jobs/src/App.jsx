@@ -375,8 +375,26 @@ export default function HouseJobsApp(){
   if(loading)return<div style={{fontFamily:"'DM Sans',sans-serif",background:"#0F1117",color:"#64748B",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}><div style={{width:28,height:28,border:"3px solid #334155",borderTop:"3px solid #10B981",borderRadius:"50%",animation:"spin .8s linear infinite"}}/><span>Connecting...</span><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
 
   return(
-    <div style={{fontFamily:"'DM Sans','Segoe UI',sans-serif",background:"#0F1117",color:"#E2E8F0",minHeight:"100vh",maxWidth:520,margin:"0 auto"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#334155;border-radius:4px}@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes spin{to{transform:rotate(360deg)}}.fu{animation:fadeUp .3s ease both}.ch{transition:transform .15s,box-shadow .15s}.ch:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.3)}select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}`}</style>
+    <div className="app-shell" style={{fontFamily:"'DM Sans','Segoe UI',sans-serif",background:"#0F1117",color:"#E2E8F0",minHeight:"100vh",margin:"0 auto"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#334155;border-radius:4px}@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes spin{to{transform:rotate(360deg)}}.fu{animation:fadeUp .3s ease both}.ch{transition:transform .15s,box-shadow .15s}.ch:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.3)}select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.app-shell{max-width:520px}
+.job-grid{display:flex;flex-direction:column;gap:8px}
+.roster-grid{display:flex;flex-direction:column;gap:6px}
+.board-list{display:flex;flex-direction:column;gap:6px}
+.header-inner{max-width:100%}
+@media(min-width:768px){
+  .app-shell{max-width:900px;padding:0 20px}
+  .job-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .roster-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .board-list{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .header-inner{max-width:900px;margin:0 auto}
+}
+@media(min-width:1200px){
+  .app-shell{max-width:1100px}
+  .job-grid{grid-template-columns:1fr 1fr 1fr}
+  .roster-grid{grid-template-columns:1fr 1fr 1fr}
+}
+`}</style>
 
       {/* HEADER */}
       <div style={{background:"linear-gradient(135deg,#1E293B,#0F172A)",borderBottom:"1px solid #1E293B",padding:"20px 20px 16px",position:"sticky",top:0,zIndex:50}}>
@@ -412,7 +430,7 @@ export default function HouseJobsApp(){
             <button onClick={()=>setAreaFilter(null)} style={{background:!areaFilter?"#334155":"#1E293B",border:`1px solid ${!areaFilter?"#475569":"#334155"}`,color:!areaFilter?"#F8FAFC":"#94A3B8",borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All</button>
             {AREA_KEYS.map(k=><button key={k} onClick={()=>setAreaFilter(areaFilter===k?null:k)} style={{background:areaFilter===k?AREA_META[k].color+"22":"#1E293B",border:`1px solid ${areaFilter===k?AREA_META[k].color:"#334155"}`,color:areaFilter===k?AREA_META[k].color:"#94A3B8",borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{AREA_META[k].label}</button>)}
           </div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div className="job-grid">
             {jobs.filter(j=>!areaFilter||j.area===areaFilter).map((job,i)=>{const data=weekData[job.id];if(!data)return null;const area=AREA_META[job.area]||{label:"?",color:"#6B7280"};return(
               <div key={job.id} className="ch fu" onClick={()=>setShowJobDetail(showJobDetail===job.id?null:job.id)} style={{background:"#1E293B",borderRadius:12,padding:"14px 16px",border:`1px solid ${data.status==="missed"?"#EF444440":"#334155"}`,animationDelay:`${i*.03}s`,cursor:"pointer"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -434,7 +452,7 @@ export default function HouseJobsApp(){
             {adminUnlocked&&<div style={{display:"flex",gap:6}}><SmallBtn onClick={()=>toggleBothGroups(currentWeek)} color="#F59E0B">{sunWeekData.bothGroups?"Split":"Both"}</SmallBtn><SmallBtn onClick={()=>reshuffleSundayWeek(currentWeek)} color="#8B5CF6">Shuffle</SmallBtn></div>}
           </div>
           {!adminUnlocked&&<div style={{background:"#1E293B",borderRadius:10,padding:"10px 14px",border:"1px solid #334155",marginBottom:16,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:12,color:"#64748B"}}>🔒 HM access for edits. </span><Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Password" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={checkPassword}>Unlock</SmallBtn></div>}
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div className="job-grid">
             {sundayJobs.map((job,i)=>{const data=sunWeekData.jobs?.[job.id];if(!data)return null;const isEd=sundayEditingJob===job.id;return(
               <div key={job.id} className="fu" style={{background:"#1E293B",borderRadius:12,padding:"14px 16px",border:"1px solid #334155",animationDelay:`${i*.03}s`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -478,7 +496,7 @@ export default function HouseJobsApp(){
           </div>
           <p style={{fontSize:12,color:"#64748B",marginBottom:16,lineHeight:1.5}}>Claim a project, finish it, get points. Whoever has the most points at the end of the semester wins a prize!</p>
 
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div className="job-grid">
             {(projWeekData.projects||[]).map((proj,i)=>{
               const dc=DIFF_COLORS[proj.difficulty]||DIFF_COLORS.easy;
               const isAvail=proj.status==="available";
