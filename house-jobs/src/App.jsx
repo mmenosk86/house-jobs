@@ -319,6 +319,7 @@ export default function HouseJobsApp(){
   const[sunEditJobName,setSunEditJobName]=useState("");
   const[sunEditJobPeople,setSunEditJobPeople]=useState(2);
   const[sunEditJobDesc,setSunEditJobDesc]=useState("");
+  const[editingSunJobIdx,setEditingSunJobIdx]=useState(null);
   // Project setup
   const[projEditName,setProjEditName]=useState("");
   const[projEditArea,setProjEditArea]=useState("Basement");
@@ -623,7 +624,36 @@ export default function HouseJobsApp(){
           {sunSetupTab==="odd"&&<div><div style={{display:"flex",gap:8,marginBottom:12}}><Input value={sunEditName} onChange={setSunEditName} placeholder="Add odd pin..." style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditName.trim()){const n=[...oddPins,sunEditName.trim()];setOddPins(n);saveSunCfg(evenPins,n,sundayJobs);setSunEditName("");}}} color="#06B6D4">+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{oddPins.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1E293B",borderRadius:8,padding:"8px 12px",border:"1px solid #334155"}}><span style={{fontSize:14,color:"#CBD5E1"}}>{b}</span><button onClick={()=>{const n=oddPins.filter((_,j)=>j!==i);setOddPins(n);saveSunCfg(evenPins,n,sundayJobs);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
           {sunSetupTab==="sunjobs"&&<div>
             <div style={{background:"#1E293B",borderRadius:10,padding:14,border:"1px solid #334155",marginBottom:12}}><Input value={sunEditJobName} onChange={setSunEditJobName} placeholder="Job name..." style={{marginBottom:8}}/><Input value={sunEditJobDesc} onChange={setSunEditJobDesc} placeholder="Description..." style={{marginBottom:8}}/><div style={{display:"flex",gap:12,alignItems:"center"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"#94A3B8"}}>People:</label><select value={sunEditJobPeople} onChange={e=>setSunEditJobPeople(+e.target.value)} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}>{[1,2,3,4,5,6,7,8].map(n=><option key={n} value={n}>{n}</option>)}</select></div><div style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditJobName.trim()){const n=[...sundayJobs,{id:"sun_"+Date.now(),name:sunEditJobName.trim(),people:sunEditJobPeople,desc:sunEditJobDesc.trim()}];setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);setSunEditJobName("");setSunEditJobDesc("");setSunEditJobPeople(2);}}} color="#8B5CF6">+ Add</SmallBtn></div></div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>{sundayJobs.map((j,i)=><div key={j.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1E293B",borderRadius:8,padding:"8px 12px",border:"1px solid #334155"}}><div><span style={{fontSize:13,color:"#CBD5E1"}}>{j.name}</span><span style={{fontSize:11,color:"#64748B",marginLeft:8}}>×{j.people}</span></div><button onClick={()=>{const n=sundayJobs.filter((_,k)=>k!==i);setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>{sundayJobs.map((j,i)=>{
+              const isEd=editingSunJobIdx===i;
+              return<div key={j.id} style={{background:"#1E293B",borderRadius:8,padding:isEd?"12px":"8px 12px",border:`1px solid ${isEd?"#8B5CF6":"#334155"}`}}>
+                {!isEd?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{cursor:"pointer",flex:1}} onClick={()=>setEditingSunJobIdx(i)}>
+                    <span style={{fontSize:13,color:"#CBD5E1"}}>{j.name}</span>
+                    <span style={{fontSize:11,color:"#64748B",marginLeft:8}}>×{j.people}</span>
+                  </div>
+                  <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
+                    <button onClick={()=>setEditingSunJobIdx(i)} style={{background:"none",border:"none",color:"#64748B",cursor:"pointer",fontSize:13,padding:"0 4px"}}>✏️</button>
+                    <button onClick={()=>{const n=sundayJobs.filter((_,k)=>k!==i);setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
+                  </div>
+                </div>
+                :<div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <Input value={j.name} onChange={v=>{const n=[...sundayJobs];n[i]={...n[i],name:v};setSundayJobs(n);}} placeholder="Job name" style={{padding:"8px 10px",fontSize:13}}/>
+                  <Input value={j.desc||""} onChange={v=>{const n=[...sundayJobs];n[i]={...n[i],desc:v};setSundayJobs(n);}} placeholder="Description" style={{padding:"8px 10px",fontSize:12}}/>
+                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <label style={{fontSize:11,color:"#94A3B8"}}>People:</label>
+                      <select value={j.people} onChange={e=>{const n=[...sundayJobs];n[i]={...n[i],people:+e.target.value};setSundayJobs(n);}} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
+                        {[1,2,3,4,5,6,7,8].map(x=><option key={x} value={x}>{x}</option>)}
+                      </select>
+                    </div>
+                    <div style={{flex:1}}/>
+                    <SmallBtn onClick={()=>{saveSunCfg(evenPins,oddPins,sundayJobs);setEditingSunJobIdx(null);}} color="#10B981">Done</SmallBtn>
+                    <button onClick={()=>{const n=sundayJobs.filter((_,k)=>k!==i);setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);setEditingSunJobIdx(null);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>Delete</button>
+                  </div>
+                </div>}
+              </div>;})}
+            </div>
           </div>}
           <button onClick={()=>{const sa=generateSundayAssignments(evenPins,oddPins,sundayJobs,weeks);setSundayAssignments(sa);saveSunA(sa);setView("sunday");}} style={{marginTop:20,width:"100%",background:"linear-gradient(135deg,#8B5CF6,#7C3AED)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔄 Regenerate Sunday</button>
         </div>}
