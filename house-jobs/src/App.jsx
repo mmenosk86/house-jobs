@@ -362,12 +362,14 @@ export default function HouseJobsApp(){
   })();},[]);
 
   // ─── SAVE ───
-  const saveA=useCallback(async a=>{if(fbConnected){skipSync.current=true;await fbSet("assignments",sanitizeObjKeys(a));}else{try{await window.storage.set("housejobs:assignments",JSON.stringify(a));}catch{}}},[fbConnected]);
-  const saveCfg=useCallback(async(b,j,w,sn)=>{if(fbConnected)await fbSet("config",{brothers:b,jobs:j,weeks:w,semesterName:sn});else try{await window.storage.set("housejobs:config",JSON.stringify({brothers:b,jobs:j,weeks:w,semesterName:sn}));}catch{}},[fbConnected]);
-  const saveSunA=useCallback(async a=>{if(fbConnected){skipSunSync.current=true;await fbSet("sundayAssignments",sanitizeObjKeys(a));}else try{await window.storage.set("housejobs:sundayAssignments",JSON.stringify(a));}catch{}},[fbConnected]);
-  const saveSunCfg=useCallback(async(ep,op,sj)=>{if(fbConnected)await fbSet("sundayConfig",{evenPins:ep,oddPins:op,sundayJobs:sj});else try{await window.storage.set("housejobs:sundayConfig",JSON.stringify({evenPins:ep,oddPins:op,sundayJobs:sj}));}catch{}},[fbConnected]);
-  const saveProjA=useCallback(async a=>{if(fbConnected){skipProjSync.current=true;await fbSet("weeklyProjects",sanitizeObjKeys(a));}else try{await window.storage.set("housejobs:weeklyProjects",JSON.stringify(a));}catch{}},[fbConnected]);
-  const saveProjCfg=useCallback(async p=>{if(fbConnected)await fbSet("projectsConfig",p);},[fbConnected]);
+  const saveA=useCallback(async a=>{try{if(fbConnected){skipSync.current=true;await fbSet("assignments",sanitizeObjKeys(a));}else{await window.storage.set("housejobs:assignments",JSON.stringify(a));}}catch(e){console.error("saveA error:",e);}},[fbConnected]);
+  const saveCfg=useCallback(async(b,j,w,sn)=>{try{
+    const cleanJobs=j.map(job=>({...job,rotating:!!job.rotating,floorRotate:!!job.floorRotate}));
+    if(fbConnected)await fbSet("config",{brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn});else await window.storage.set("housejobs:config",JSON.stringify({brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn}));}catch(e){console.error("saveCfg error:",e);}},[fbConnected]);
+  const saveSunA=useCallback(async a=>{try{if(fbConnected){skipSunSync.current=true;await fbSet("sundayAssignments",sanitizeObjKeys(a));}else await window.storage.set("housejobs:sundayAssignments",JSON.stringify(a));}catch(e){console.error("saveSunA error:",e);}},[fbConnected]);
+  const saveSunCfg=useCallback(async(ep,op,sj)=>{try{if(fbConnected)await fbSet("sundayConfig",{evenPins:ep,oddPins:op,sundayJobs:sj});else await window.storage.set("housejobs:sundayConfig",JSON.stringify({evenPins:ep,oddPins:op,sundayJobs:sj}));}catch(e){console.error("saveSunCfg error:",e);}},[fbConnected]);
+  const saveProjA=useCallback(async a=>{try{if(fbConnected){skipProjSync.current=true;await fbSet("weeklyProjects",sanitizeObjKeys(a));}else await window.storage.set("housejobs:weeklyProjects",JSON.stringify(a));}catch(e){console.error("saveProjA error:",e);}},[fbConnected]);
+  const saveProjCfg=useCallback(async p=>{try{if(fbConnected)await fbSet("projectsConfig",p);}catch(e){console.error("saveProjCfg error:",e);}},[fbConnected]);
 
   async function checkPassword(){const h=await hashPassword(pwInput);if(h==="d85802bb9e9169949367f292bfdf4ca200139b4c44bc47a50700535f16fba13e"){setAdminUnlocked(true);setPwError(false);}else setPwError(true);}
 
@@ -442,9 +444,23 @@ export default function HouseJobsApp(){
   }
 
   async function regenerate(){
-    setSaving(true);const a=generateAssignments(brothers,jobs,weeks);const sa=generateSundayAssignments(evenPins,oddPins,sundayJobs,weeks);const wp=generateWeeklyProjects(projects,weeks);
-    setAssignments(a);setSundayAssignments(sa);setWeeklyProjects(wp);
-    await saveA(a);await saveSunA(sa);await saveProjA(wp);await saveCfg(brothers,jobs,weeks,semesterName);await saveSunCfg(evenPins,oddPins,sundayJobs);await saveProjCfg(projects);
+    setSaving(true);
+    try{
+      const a=generateAssignments(brothers,jobs,weeks);
+      const sa=generateSundayAssignments(evenPins,oddPins,sundayJobs,weeks);
+      const wp=generateWeeklyProjects(projects,weeks);
+      setAssignments(a);setSundayAssignments(sa);setWeeklyProjects(wp);
+      await Promise.all([
+        saveA(a),
+        saveSunA(sa),
+        saveProjA(wp),
+        saveCfg(brothers,jobs,weeks,semesterName),
+        saveSunCfg(evenPins,oddPins,sundayJobs),
+        saveProjCfg(projects),
+      ]);
+    }catch(e){
+      console.error("Regenerate error:",e);
+    }
     setConfirmRegen(false);setCurrentWeekIdx(0);setView("dashboard");setSaving(false);
   }
 
