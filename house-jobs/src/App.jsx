@@ -377,10 +377,15 @@ export default function HouseJobsApp(){
   const projWeekData=weeklyProjects[currentWeek]||{projects:[]};
 
   function cycleStatus(week,jobId,isAdmin){
-    setAssignments(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.[jobId]){const c=u[week][jobId].status;if(isAdmin)u[week][jobId].status=STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length];else{if(c==="pending")u[week][jobId].status="done";else if(c==="done")u[week][jobId].status="pending";}}saveA(u);return u;});
+    const u=JSON.parse(JSON.stringify(assignments));
+    if(u[week]?.[jobId]){const c=u[week][jobId].status;if(isAdmin)u[week][jobId].status=STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length];else{if(c==="pending")u[week][jobId].status="done";else if(c==="done")u[week][jobId].status="pending";}}
+    setAssignments(u);saveA(u);
   }
   function overrideWeeklyJob(week,jobId,names){
-    setAssignments(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.[jobId])u[week][jobId].assigned=names;saveA(u);return u;});
+    const u=JSON.parse(JSON.stringify(assignments));
+    if(u[week]?.[jobId])u[week][jobId].assigned=names;
+    setAssignments(u);
+    saveA(u);
   }
   function reshuffleWeeklyAssignments(){
     const a=generateAssignments(brothers,jobs,weeks);
@@ -397,45 +402,43 @@ export default function HouseJobsApp(){
     setAssignments(a);saveA(a);
   }
   function cycleSundayStatus(week,jobId,isAdmin){
-    setSundayAssignments(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.jobs?.[jobId]){const c=u[week].jobs[jobId].status;if(isAdmin)u[week].jobs[jobId].status=STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length];else{if(c==="pending")u[week].jobs[jobId].status="done";else if(c==="done")u[week].jobs[jobId].status="pending";}}saveSunA(u);return u;});
+    const u=JSON.parse(JSON.stringify(sundayAssignments));
+    if(u[week]?.jobs?.[jobId]){const c=u[week].jobs[jobId].status;if(isAdmin)u[week].jobs[jobId].status=STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length];else{if(c==="pending")u[week].jobs[jobId].status="done";else if(c==="done")u[week].jobs[jobId].status="pending";}}
+    setSundayAssignments(u);saveSunA(u);
   }
-  function toggleBothGroups(week){setSundayAssignments(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]){u[week].bothGroups=!u[week].bothGroups;const r=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs);u[week]=r;}saveSunA(u);return u;});}
-  function overrideSundayJob(week,jobId,names){setSundayAssignments(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.jobs?.[jobId])u[week].jobs[jobId].assigned=names;saveSunA(u);return u;});}
-  function reshuffleSundayWeek(week){setSundayAssignments(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week])u[week]=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs);saveSunA(u);return u;});}
+  function toggleBothGroups(week){const u=JSON.parse(JSON.stringify(sundayAssignments));if(u[week]){u[week].bothGroups=!u[week].bothGroups;const r=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs);u[week]=r;}setSundayAssignments(u);saveSunA(u);}
+  function overrideSundayJob(week,jobId,names){const u=JSON.parse(JSON.stringify(sundayAssignments));if(u[week]?.jobs?.[jobId])u[week].jobs[jobId].assigned=names;setSundayAssignments(u);saveSunA(u);}
+  function reshuffleSundayWeek(week){const u=JSON.parse(JSON.stringify(sundayAssignments));if(u[week])u[week]=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs);setSundayAssignments(u);saveSunA(u);}
 
   // Makeup functions — adds someone to next week's Sunday cleaning
   function addMakeup(name){
     const nextIdx=currentWeekIdx+1;
     if(nextIdx>=weeks.length||!name.trim())return;
     const nextWeek=weeks[nextIdx];
-    setSundayAssignments(prev=>{
-      const u=JSON.parse(JSON.stringify(prev));
-      if(!u[nextWeek])return prev;
-      if(!u[nextWeek].makeups)u[nextWeek].makeups=[];
-      if(!u[nextWeek].makeups.includes(name.trim())){u[nextWeek].makeups.push(name.trim());}
-      saveSunA(u);return u;
-    });
+    const u=JSON.parse(JSON.stringify(sundayAssignments));
+    if(!u[nextWeek])return;
+    if(!u[nextWeek].makeups)u[nextWeek].makeups=[];
+    if(!u[nextWeek].makeups.includes(name.trim())){u[nextWeek].makeups.push(name.trim());}
+    setSundayAssignments(u);saveSunA(u);
     setMakeupName("");
   }
   function removeMakeup(week,name){
-    setSundayAssignments(prev=>{
-      const u=JSON.parse(JSON.stringify(prev));
-      if(u[week]?.makeups){u[week].makeups=u[week].makeups.filter(n=>n!==name);}
-      saveSunA(u);return u;
-    });
+    const u=JSON.parse(JSON.stringify(sundayAssignments));
+    if(u[week]?.makeups){u[week].makeups=u[week].makeups.filter(n=>n!==name);}
+    setSundayAssignments(u);saveSunA(u);
   }
   // Project actions
   function claimProject(week,projIdx,name){
-    setWeeklyProjects(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.projects?.[projIdx]&&u[week].projects[projIdx].status==="available"){u[week].projects[projIdx].status="claimed";u[week].projects[projIdx].claimedBy=name;}saveProjA(u);return u;});
+    const u=JSON.parse(JSON.stringify(weeklyProjects));if(u[week]?.projects?.[projIdx]&&u[week].projects[projIdx].status==="available"){u[week].projects[projIdx].status="claimed";u[week].projects[projIdx].claimedBy=name;}setWeeklyProjects(u);saveProjA(u);
   }
   function completeProject(week,projIdx){
-    setWeeklyProjects(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.projects?.[projIdx]&&u[week].projects[projIdx].status==="claimed"){u[week].projects[projIdx].status="done";u[week].projects[projIdx].completedBy=u[week].projects[projIdx].claimedBy;}saveProjA(u);return u;});
+    const u=JSON.parse(JSON.stringify(weeklyProjects));if(u[week]?.projects?.[projIdx]&&u[week].projects[projIdx].status==="claimed"){u[week].projects[projIdx].status="done";u[week].projects[projIdx].completedBy=u[week].projects[projIdx].claimedBy;}setWeeklyProjects(u);saveProjA(u);
   }
   function verifyProject(week,projIdx){
-    setWeeklyProjects(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.projects?.[projIdx])u[week].projects[projIdx].status="verified";saveProjA(u);return u;});
+    const u=JSON.parse(JSON.stringify(weeklyProjects));if(u[week]?.projects?.[projIdx])u[week].projects[projIdx].status="verified";setWeeklyProjects(u);saveProjA(u);
   }
   function unclaimProject(week,projIdx){
-    setWeeklyProjects(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.projects?.[projIdx]){u[week].projects[projIdx].status="available";u[week].projects[projIdx].claimedBy=null;u[week].projects[projIdx].completedBy=null;}saveProjA(u);return u;});
+    const u=JSON.parse(JSON.stringify(weeklyProjects));if(u[week]?.projects?.[projIdx]){u[week].projects[projIdx].status="available";u[week].projects[projIdx].claimedBy=null;u[week].projects[projIdx].completedBy=null;}setWeeklyProjects(u);saveProjA(u);
   }
 
   async function regenerate(){
