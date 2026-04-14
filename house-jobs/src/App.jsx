@@ -177,46 +177,40 @@ function generateAssignments(brothers, jobs, weeks) {
   bList.forEach(b=>{if(!byFloor[b.floor])byFloor[b.floor]=[];byFloor[b.floor].push(b.name);});
   Object.keys(byFloor).forEach(f=>{byFloor[f]=shuffle(byFloor[f]);});
 
+  // Track total assignments per brother for balancing
+  const workload = {};
+  allNames.forEach(n=>{workload[n]=0;});
+
+  // Pick the N least-loaded brothers from a pool
+  function pickLeastLoaded(pool, count){
+    const sorted = [...pool].sort((a,b)=>(workload[a]||0)-(workload[b]||0));
+    const picked = sorted.slice(0, count);
+    picked.forEach(n=>{workload[n]=(workload[n]||0)+1;});
+    return picked;
+  }
+
   const asg = {};
-  const floorRotIdx = {}; // for floorRotate jobs
-  let globalRotIdx = 0;   // for rotating (global) jobs
 
-  // Pre-compute static assignments (non-rotating, non-floorRotate)
-  const staticMap = {}; const staticFloorIdx = {};
-  jobs.filter(j=>!j.rotating&&!j.floorRotate).forEach(job=>{
-    const floor = AREA_TO_FLOOR[job.area];
-    const pool = floor && byFloor[floor]?.length ? byFloor[floor] : allNames;
-    const key = floor||"all";
-    if(!staticFloorIdx[key]) staticFloorIdx[key]=0;
-    const assigned=[];
-    for(let p=0;p<job.people;p++){assigned.push(pool[(staticFloorIdx[key]+p)%pool.length]);}
-    staticFloorIdx[key]+=job.people;
-    staticMap[job.id]=assigned;
-  });
-
-  weeks.forEach((week,wi)=>{
+  weeks.forEach((week)=>{
     asg[week]={};
     jobs.forEach(job=>{
+      let assigned;
       if(job.rotating){
-        // Global rotating: cycle through ALL brothers
-        const assigned=[];
-        for(let p=0;p<job.people;p++){assigned.push(allNames[(globalRotIdx+p)%allNames.length]);}
-        asg[week][job.id]={assigned,status:"pending"};
-        globalRotIdx+=job.people;
+        // Global rotating: pick least-loaded from ALL brothers
+        assigned = pickLeastLoaded(allNames, job.people);
       }else if(job.floorRotate){
-        // Floor rotating: cycle through only brothers on that floor
+        // Floor rotating: pick least-loaded from floor pool
         const floor = AREA_TO_FLOOR[job.area];
         const pool = floor && byFloor[floor]?.length ? byFloor[floor] : allNames;
-        const key = "frot_"+(floor||"all");
-        if(!floorRotIdx[key]) floorRotIdx[key]=0;
-        const assigned=[];
-        for(let p=0;p<job.people;p++){assigned.push(pool[(floorRotIdx[key]+p)%pool.length]);}
-        asg[week][job.id]={assigned,status:"pending"};
-        floorRotIdx[key]+=job.people;
+        assigned = pickLeastLoaded(pool, job.people);
       }else{
-        // Static: same people every week
-        asg[week][job.id]={assigned:staticMap[job.id]||[],status:"pending"};
+        // Static: pick least-loaded from floor pool (or all), but same every week
+        // For static, we assign once and reuse — but still balance initially
+        const floor = AREA_TO_FLOOR[job.area];
+        const pool = floor && byFloor[floor]?.length ? byFloor[floor] : allNames;
+        assigned = pickLeastLoaded(pool, job.people);
       }
+      asg[week][job.id]={assigned, status:"pending"};
     });
   });
   return asg;
@@ -319,6 +313,7 @@ export default function HouseJobsApp(){
   // Weekly job manual override
   const[weeklyEditingJob,setWeeklyEditingJob]=useState(null);
   const[weeklyEditNames,setWeeklyEditNames]=useState("");
+  const[editingJobIdx,setEditingJobIdx]=useState(null);
   const[sunSetupTab,setSunSetupTab]=useState("even");
   const[sunEditName,setSunEditName]=useState("");
   const[sunEditJobName,setSunEditJobName]=useState("");
@@ -836,7 +831,51 @@ export default function HouseJobsApp(){
               <Input value={editJobDesc} onChange={setEditJobDesc} placeholder="Description..." style={{marginBottom:8}}/>
               <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"#94A3B8"}}>People:</label><select value={editJobPeople} onChange={e=>setEditJobPeople(+e.target.value)} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></div><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobRotating} onChange={e=>{setEditJobRotating(e.target.checked);if(e.target.checked)setEditJobFloorRotate(false);}} style={{accentColor:"#F59E0B"}}/> Rotating</label><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobFloorRotate} onChange={e=>{setEditJobFloorRotate(e.target.checked);if(e.target.checked)setEditJobRotating(false);}} style={{accentColor:"#06B6D4"}}/> Floor Rotate</label><div style={{flex:1}}/><SmallBtn onClick={()=>{if(editJobName.trim()){setJobs([...jobs,{id:editJobName.trim().toLowerCase().replace(/\s+/g,"_")+"_"+Date.now(),name:editJobName.trim(),area:editJobArea,people:editJobPeople,desc:editJobDesc.trim(),rotating:editJobRotating,floorRotate:editJobFloorRotate}]);setEditJobName("");setEditJobDesc("");setEditJobPeople(1);setEditJobRotating(false);setEditJobFloorRotate(false);}}}>+ Add</SmallBtn></div>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>{jobs.map((j,i)=><div key={j.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1E293B",borderRadius:8,padding:"8px 12px",border:"1px solid #334155"}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:(AREA_META[j.area]||{color:"#6B7280"}).color}}/><span style={{fontSize:13,color:"#CBD5E1"}}>{j.name}</span><span style={{fontSize:11,color:"#64748B"}}>×{j.people}</span>{j.rotating&&<span style={{fontSize:10,color:"#F59E0B"}}>ROT</span>}{j.floorRotate&&<span style={{fontSize:10,color:"#06B6D4"}}>FLOOR</span>}</div><button onClick={()=>setJobs(jobs.filter((_,k)=>k!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>{jobs.map((j,i)=>{
+              const isEd=editingJobIdx===i;
+              const fc=AREA_META[j.area]||{color:"#6B7280"};
+              return<div key={j.id} style={{background:"#1E293B",borderRadius:8,padding:isEd?"12px":"8px 12px",border:`1px solid ${isEd?"#F59E0B":"#334155"}`}}>
+                {!isEd?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setEditingJobIdx(i)}>
+                    <div style={{width:8,height:8,borderRadius:"50%",background:fc.color,flexShrink:0}}/>
+                    <span style={{fontSize:13,color:"#CBD5E1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.name}</span>
+                    <span style={{fontSize:11,color:"#64748B"}}>×{j.people}</span>
+                    {j.rotating&&<span style={{fontSize:10,color:"#F59E0B"}}>ROT</span>}
+                    {j.floorRotate&&<span style={{fontSize:10,color:"#06B6D4"}}>FLOOR</span>}
+                  </div>
+                  <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
+                    <button onClick={()=>setEditingJobIdx(i)} style={{background:"none",border:"none",color:"#64748B",cursor:"pointer",fontSize:13,padding:"0 4px"}}>✏️</button>
+                    <button onClick={()=>setJobs(jobs.filter((_,k)=>k!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
+                  </div>
+                </div>
+                :<div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",gap:8}}>
+                    <Input value={j.name} onChange={v=>{const n=[...jobs];n[i]={...n[i],name:v};setJobs(n);}} placeholder="Job name" style={{flex:1,padding:"8px 10px",fontSize:13}}/>
+                    <select value={j.area} onChange={e=>{const n=[...jobs];n[i]={...n[i],area:e.target.value};setJobs(n);}} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 8px",fontSize:12,fontFamily:"inherit"}}>
+                      {AREA_KEYS.map(k=><option key={k} value={k}>{AREA_META[k].label}</option>)}
+                    </select>
+                  </div>
+                  <Input value={j.desc||""} onChange={v=>{const n=[...jobs];n[i]={...n[i],desc:v};setJobs(n);}} placeholder="Description" style={{padding:"8px 10px",fontSize:12}}/>
+                  <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <label style={{fontSize:11,color:"#94A3B8"}}>People:</label>
+                      <select value={j.people} onChange={e=>{const n=[...jobs];n[i]={...n[i],people:+e.target.value};setJobs(n);}} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
+                        {[1,2,3,4].map(x=><option key={x} value={x}>{x}</option>)}
+                      </select>
+                    </div>
+                    <label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#94A3B8",cursor:"pointer"}}>
+                      <input type="checkbox" checked={!!j.rotating} onChange={e=>{const n=[...jobs];n[i]={...n[i],rotating:e.target.checked,floorRotate:e.target.checked?false:n[i].floorRotate};setJobs(n);}} style={{accentColor:"#F59E0B"}}/> Rotating
+                    </label>
+                    <label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#94A3B8",cursor:"pointer"}}>
+                      <input type="checkbox" checked={!!j.floorRotate} onChange={e=>{const n=[...jobs];n[i]={...n[i],floorRotate:e.target.checked,rotating:e.target.checked?false:n[i].rotating};setJobs(n);}} style={{accentColor:"#06B6D4"}}/> Floor Rotate
+                    </label>
+                    <div style={{flex:1}}/>
+                    <SmallBtn onClick={()=>setEditingJobIdx(null)} color="#10B981">Done</SmallBtn>
+                    <button onClick={()=>{setJobs(jobs.filter((_,k)=>k!==i));setEditingJobIdx(null);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>Delete</button>
+                  </div>
+                </div>}
+              </div>;})}
+            </div>
           </div>}
           {setupTab==="weeks"&&<div><div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center"}}><Input value={editWeekStart} onChange={setEditWeekStart} placeholder="Start" style={{flex:1}}/><span style={{color:"#64748B"}}>–</span><Input value={editWeekEnd} onChange={setEditWeekEnd} placeholder="End" style={{flex:1}}/><SmallBtn onClick={()=>{if(editWeekStart.trim()&&editWeekEnd.trim()){setWeeks([...weeks,`${editWeekStart.trim()}-${editWeekEnd.trim()}`]);setEditWeekStart("");setEditWeekEnd("");}}}>+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{weeks.map((w,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:i===currentWeekIdx?"#10B98118":"#1E293B",borderRadius:8,padding:"8px 12px",border:`1px solid ${i===currentWeekIdx?"#10B981":"#334155"}`}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:11,color:"#64748B",fontFamily:"'Space Mono',monospace",width:24}}>{i+1}</span><span style={{fontSize:13,color:"#CBD5E1",fontFamily:"'Space Mono',monospace"}}>{w}</span></div><button onClick={()=>setWeeks(weeks.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
           <div style={{marginTop:24,display:"flex",flexDirection:"column",gap:10}}>
