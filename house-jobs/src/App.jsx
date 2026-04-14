@@ -19,7 +19,11 @@ const FIREBASE_CONFIG = {
 
 // ─── DEFAULTS ───
 const DEFAULT_WEEKS = ["8/25-8/31","9/1-9/7","9/8-9/14","9/15-9/21","9/22-9/28","9/29-10/5","10/6-10/12","10/13-10/19","10/20-10/26","10/27-11/2","11/3-11/9","11/10-11/16","11/17-11/23","12/1-12/7","12/8-12/14"];
-const DEFAULT_BROTHERS = ["Mason M","Ethan D","Gabe D","Daniel M","Mitchell S","Evan R","John","Aiden","Reese C","Keely S","Sergio G","Nic D","Rylan Z","Tyler L","Ryan M","Henry","Gavin","Cole","Jake","Nate B"];
+const DEFAULT_BROTHERS = [
+  {name:"Mason M",floor:"basement"},{name:"Ethan D",floor:"basement"},{name:"Gabe D",floor:"basement"},{name:"Daniel M",floor:"first"},{name:"Mitchell S",floor:"first"},{name:"Evan R",floor:"first"},
+  {name:"John",floor:"first"},{name:"Aiden",floor:"second"},{name:"Reese C",floor:"second"},{name:"Keely S",floor:"second"},{name:"Sergio G",floor:"second"},{name:"Nic D",floor:"third"},
+  {name:"Rylan Z",floor:"third"},{name:"Tyler L",floor:"third"},{name:"Ryan M",floor:"third"},{name:"Henry",floor:"first"},{name:"Gavin",floor:"second"},{name:"Cole",floor:"third"},{name:"Jake",floor:"basement"},{name:"Nate B",floor:"second"}
+];
 
 const DEFAULT_JOBS = [
   { id:"basement", name:"Basement", area:"basement", people:2, desc:"Sweep, mop, wipe surfaces, empty trash", rotating:false },
@@ -161,11 +165,48 @@ const DIFF_COLORS = { easy:{ bg:"#10B98118", color:"#10B981", border:"#10B98140"
 // ─── HELPERS ───
 function shuffle(arr) { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 
+// Map job areas to brother floors
+const AREA_TO_FLOOR = { basement:"basement", first:"first", second:"second", third:"third" };
+
+function getBrotherNames(brothers){ return brothers.map(b=>typeof b==="string"?b:b.name); }
+
 function generateAssignments(brothers, jobs, weeks) {
-  const pool=shuffle(brothers); const asg={}; let bi=0; const sm={};
-  jobs.filter(j=>!j.rotating).forEach(job=>{const a=[];for(let p=0;p<job.people;p++){a.push(pool[bi%pool.length]);bi++;}sm[job.id]=a;});
+  const bList = brothers.map(b=>typeof b==="string"?{name:b,floor:"first"}:b);
+  const allNames = shuffle(bList.map(b=>b.name));
+  const byFloor = {};
+  bList.forEach(b=>{if(!byFloor[b.floor])byFloor[b.floor]=[];byFloor[b.floor].push(b.name);});
+  Object.keys(byFloor).forEach(f=>{byFloor[f]=shuffle(byFloor[f]);});
+
+  const asg = {}; const sm = {}; const floorIdx = {};
+
+  // Static jobs: assign brothers from matching floor, fallback to any
+  jobs.filter(j=>!j.rotating).forEach(job=>{
+    const floor = AREA_TO_FLOOR[job.area];
+    const pool = floor && byFloor[floor]?.length ? byFloor[floor] : allNames;
+    if(!floorIdx[job.area]) floorIdx[job.area]=0;
+    const assigned = [];
+    for(let p=0;p<job.people;p++){
+      assigned.push(pool[floorIdx[job.area] % pool.length]);
+      floorIdx[job.area]++;
+    }
+    sm[job.id]=assigned;
+  });
+
+  // Rotating jobs: pull from everyone
   let ri=0;
-  weeks.forEach(week=>{asg[week]={};jobs.forEach(job=>{if(!job.rotating){asg[week][job.id]={assigned:sm[job.id],status:"pending"};}else{const a=[];for(let p=0;p<job.people;p++){a.push(pool[(ri+p)%pool.length]);}asg[week][job.id]={assigned:a,status:"pending"};ri+=job.people;}});});
+  weeks.forEach(week=>{
+    asg[week]={};
+    jobs.forEach(job=>{
+      if(!job.rotating){
+        asg[week][job.id]={assigned:sm[job.id],status:"pending"};
+      }else{
+        const assigned=[];
+        for(let p=0;p<job.people;p++){assigned.push(allNames[(ri+p)%allNames.length]);}
+        asg[week][job.id]={assigned,status:"pending"};
+        ri+=job.people;
+      }
+    });
+  });
   return asg;
 }
 
@@ -251,6 +292,7 @@ export default function HouseJobsApp(){
   const[pwInput,setPwInput]=useState("");
   const[pwError,setPwError]=useState(false);
   const[editName,setEditName]=useState("");
+  const[editFloor,setEditFloor]=useState("first");
   const[editJobName,setEditJobName]=useState("");
   const[editJobArea,setEditJobArea]=useState("common");
   const[editJobPeople,setEditJobPeople]=useState(1);
@@ -261,6 +303,9 @@ export default function HouseJobsApp(){
   const[confirmRegen,setConfirmRegen]=useState(false);
   const[setupTab,setSetupTab]=useState("brothers");
   const[saving,setSaving]=useState(false);
+  // Weekly job manual override
+  const[weeklyEditingJob,setWeeklyEditingJob]=useState(null);
+  const[weeklyEditNames,setWeeklyEditNames]=useState("");
   const[sunSetupTab,setSunSetupTab]=useState("even");
   const[sunEditName,setSunEditName]=useState("");
   const[sunEditJobName,setSunEditJobName]=useState("");
@@ -325,6 +370,23 @@ export default function HouseJobsApp(){
   function cycleStatus(week,jobId,isAdmin){
     setAssignments(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.[jobId]){const c=u[week][jobId].status;if(isAdmin)u[week][jobId].status=STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length];else{if(c==="pending")u[week][jobId].status="done";else if(c==="done")u[week][jobId].status="pending";}}saveA(u);return u;});
   }
+  function overrideWeeklyJob(week,jobId,names){
+    setAssignments(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.[jobId])u[week][jobId].assigned=names;saveA(u);return u;});
+  }
+  function reshuffleWeeklyAssignments(){
+    const a=generateAssignments(brothers,jobs,weeks);
+    // Preserve any existing statuses that aren't pending
+    Object.keys(assignments).forEach(week=>{
+      if(a[week]&&assignments[week]){
+        Object.keys(assignments[week]).forEach(jobId=>{
+          if(a[week][jobId]&&assignments[week][jobId].status!=="pending"){
+            a[week][jobId].status=assignments[week][jobId].status;
+          }
+        });
+      }
+    });
+    setAssignments(a);saveA(a);
+  }
   function cycleSundayStatus(week,jobId,isAdmin){
     setSundayAssignments(prev=>{const u=JSON.parse(JSON.stringify(prev));if(u[week]?.jobs?.[jobId]){const c=u[week].jobs[jobId].status;if(isAdmin)u[week].jobs[jobId].status=STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length];else{if(c==="pending")u[week].jobs[jobId].status="done";else if(c==="done")u[week].jobs[jobId].status="pending";}}saveSunA(u);return u;});
   }
@@ -375,7 +437,8 @@ export default function HouseJobsApp(){
   }
 
   // ─── STATS ───
-  const stats=useMemo(()=>{const s={};brothers.forEach(b=>{s[b]={total:0,done:0,missed:0,verified:0,pending:0};});Object.values(assignments).forEach(wj=>{if(!wj||typeof wj!=="object")return;Object.values(wj).forEach(e=>{if(!e?.assigned)return;e.assigned.forEach(b=>{if(s[b]){s[b].total++;s[b][e.status]++;}});});});return s;},[assignments,brothers]);
+  const brotherNames=useMemo(()=>getBrotherNames(brothers),[brothers]);
+  const stats=useMemo(()=>{const s={};brotherNames.forEach(b=>{s[b]={total:0,done:0,missed:0,verified:0,pending:0};});Object.values(assignments).forEach(wj=>{if(!wj||typeof wj!=="object")return;Object.values(wj).forEach(e=>{if(!e?.assigned)return;e.assigned.forEach(b=>{if(s[b]){s[b].total++;s[b][e.status]++;}});});});return s;},[assignments,brotherNames]);
 
   const projectStats=useMemo(()=>{
     const s={};
@@ -436,7 +499,7 @@ export default function HouseJobsApp(){
 
       {/* NAV */}
       <div style={{display:"flex",gap:1,padding:"12px 12px 0",borderBottom:"1px solid #1E293B",background:"#0F1117",overflowX:"auto"}}>
-        {[{key:"dashboard",label:"Weekly"},{key:"sunday",label:"Sunday"},{key:"projects",label:"Projects"},{key:"leaderboard",label:"Board"},{key:"setup",label:"⚙"}].map(tab=>
+        {[{key:"dashboard",label:"Weekly"},{key:"sunday",label:"Sunday"},{key:"projects",label:"Projects"},{key:"roster",label:"Roster"},{key:"leaderboard",label:"Board"},{key:"setup",label:"⚙"}].map(tab=>
           <button key={tab.key} onClick={()=>{setView(tab.key);setSelectedBrother(null);}} style={{flex:1,padding:"10px 0 12px",background:"none",border:"none",minWidth:0,color:view===tab.key?"#F8FAFC":"#64748B",fontSize:11,fontWeight:view===tab.key?700:500,cursor:"pointer",fontFamily:"inherit",borderBottom:view===tab.key?`2px solid ${tab.key==="setup"?"#F59E0B":tab.key==="projects"?"#EC4899":tab.key==="sunday"?"#8B5CF6":"#10B981"}`:"2px solid transparent"}}>{tab.label}</button>
         )}
       </div>
@@ -445,6 +508,10 @@ export default function HouseJobsApp(){
 
         {/* ══════ DASHBOARD ══════ */}
         {view==="dashboard"&&<div className="fu">
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div/>
+            {adminUnlocked&&<SmallBtn onClick={reshuffleWeeklyAssignments} color="#10B981">🔄 Reshuffle</SmallBtn>}
+          </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
             {[{n:weekStats.done,l:"Done",c:"#10B981"},{n:weekStats.pending,l:"Pending",c:"#F59E0B"},{n:weekStats.missed,l:"Missed",c:"#EF4444"}].map(s=><div key={s.l} style={{background:"#1E293B",borderRadius:10,padding:"14px 12px",textAlign:"center",border:"1px solid #334155"}}><div style={{fontSize:26,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{s.n}</div><div style={{fontSize:11,color:"#64748B",marginTop:4}}>{s.l}</div></div>)}
           </div>
@@ -453,16 +520,20 @@ export default function HouseJobsApp(){
             {AREA_KEYS.map(k=><button key={k} onClick={()=>setAreaFilter(areaFilter===k?null:k)} style={{background:areaFilter===k?AREA_META[k].color+"22":"#1E293B",border:`1px solid ${areaFilter===k?AREA_META[k].color:"#334155"}`,color:areaFilter===k?AREA_META[k].color:"#94A3B8",borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{AREA_META[k].label}</button>)}
           </div>
           <div className="job-grid">
-            {jobs.filter(j=>!areaFilter||j.area===areaFilter).map((job,i)=>{const data=weekData[job.id];if(!data)return null;const area=AREA_META[job.area]||{label:"?",color:"#6B7280"};return(
+            {jobs.filter(j=>!areaFilter||j.area===areaFilter).map((job,i)=>{const data=weekData[job.id];if(!data)return null;const area=AREA_META[job.area]||{label:"?",color:"#6B7280"};const isEd=weeklyEditingJob===job.id;return(
               <div key={job.id} className="ch fu" onClick={()=>setShowJobDetail(showJobDetail===job.id?null:job.id)} style={{background:"#1E293B",borderRadius:12,padding:"14px 16px",border:`1px solid ${data.status==="missed"?"#EF444440":"#334155"}`,animationDelay:`${i*.03}s`,cursor:"pointer"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:area.color,boxShadow:`0 0 6px ${area.color}60`,flexShrink:0}}/><span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{job.name}</span>{job.rotating&&<span style={{fontSize:10,color:"#F59E0B",background:"#F59E0B18",padding:"1px 7px",borderRadius:4,fontWeight:600,border:"1px solid #F59E0B30"}}>ROT</span>}</div>
                     <div style={{fontSize:13,color:"#94A3B8",marginTop:4,marginLeft:16}}>{data.assigned?.join(", ")}</div>
                   </div>
-                  <StatusBadge status={data.status} onClick={e=>{e.stopPropagation();cycleStatus(currentWeek,job.id,adminUnlocked);}}/>
+                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    {adminUnlocked&&<button onClick={e=>{e.stopPropagation();if(isEd)setWeeklyEditingJob(null);else{setWeeklyEditingJob(job.id);setWeeklyEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"#64748B",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✏️</button>}
+                    <StatusBadge status={data.status} onClick={e=>{e.stopPropagation();cycleStatus(currentWeek,job.id,adminUnlocked);}}/>
+                  </div>
                 </div>
-                {showJobDetail===job.id&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #334155",fontSize:12,color:"#64748B",lineHeight:1.6}}><span style={{color:"#94A3B8",fontWeight:600}}>What to do: </span>{job.desc}</div>}
+                {isEd&&adminUnlocked&&<div onClick={e=>e.stopPropagation()} style={{marginTop:10,paddingTop:10,borderTop:"1px solid #334155",display:"flex",gap:8}}><Input value={weeklyEditNames} onChange={setWeeklyEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={()=>{overrideWeeklyJob(currentWeek,job.id,weeklyEditNames.split(",").map(n=>n.trim()).filter(Boolean));setWeeklyEditingJob(null);}}>Save</SmallBtn></div>}
+                {showJobDetail===job.id&&!isEd&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #334155",fontSize:12,color:"#64748B",lineHeight:1.6}}><span style={{color:"#94A3B8",fontWeight:600}}>What to do: </span>{job.desc}</div>}
               </div>);})}
           </div>
         </div>}
@@ -638,11 +709,56 @@ export default function HouseJobsApp(){
           <button onClick={()=>{const wp=generateWeeklyProjects(projects,weeks);setWeeklyProjects(wp);saveProjA(wp);setView("projects");}} style={{marginTop:20,width:"100%",background:"linear-gradient(135deg,#EC4899,#DB2777)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔄 Reshuffle Projects Across Weeks</button>
         </div>}
 
+        {/* ══════ ROSTER ══════ */}
+        {view==="roster"&&!selectedBrother&&<div className="fu">
+          <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4}}>Full Roster</h2>
+          <p style={{fontSize:12,color:"#64748B",marginBottom:16}}>Tap a name to see their full schedule</p>
+          <div className="roster-grid">
+            {brothers.map((bObj,i)=>{const b=typeof bObj==="string"?{name:bObj,floor:"first"}:bObj;const s=stats[b.name]||{total:0,done:0,verified:0};const pct=s.total>0?Math.round(((s.done+(s.verified||0))/s.total)*100):0;const fc=AREA_META[b.floor]||{color:"#6B7280",label:"?"};return(
+              <div key={b.name} className="ch fu" onClick={()=>setSelectedBrother(b.name)} style={{background:"#1E293B",borderRadius:10,padding:"12px 16px",border:"1px solid #334155",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",animationDelay:`${i*.025}s`}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${fc.color}44,${fc.color}22)`,border:`1px solid ${fc.color}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:fc.color}}>{b.name[0]}</div>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{b.name}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
+                      <span style={{fontSize:10,color:fc.color,background:`${fc.color}18`,padding:"1px 6px",borderRadius:4,fontWeight:600}}>{fc.label}</span>
+                      <span style={{fontSize:11,color:"#64748B"}}>{s.done+(s.verified||0)}/{s.total}</span>
+                    </div>
+                  </div>
+                </div>
+                <div style={{fontSize:15,fontWeight:700,fontFamily:"'Space Mono',monospace",color:pct>=80?"#10B981":pct>=50?"#F59E0B":"#EF4444"}}>{pct}%</div>
+              </div>);})}
+          </div>
+        </div>}
+
+        {view==="roster"&&selectedBrother&&<div className="fu">
+          <button onClick={()=>setSelectedBrother(null)} style={{background:"none",border:"none",color:"#10B981",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0}}>← Back</button>
+          <div style={{background:"#1E293B",borderRadius:14,padding:20,border:"1px solid #334155",marginBottom:16}}>
+            <h2 style={{fontSize:20,fontWeight:700,color:"#F8FAFC",marginBottom:14}}>{selectedBrother}</h2>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8}}>
+              {[{n:stats[selectedBrother]?.done||0,l:"Done",c:"#10B981"},{n:stats[selectedBrother]?.verified||0,l:"Verified",c:"#3B82F6"},{n:stats[selectedBrother]?.missed||0,l:"Missed",c:"#EF4444"},{n:stats[selectedBrother]?.pending||0,l:"Pending",c:"#F59E0B"}].map(s=>
+                <div key={s.l} style={{textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace"}}>{s.n}</div><div style={{fontSize:10,color:"#64748B",marginTop:2}}>{s.l}</div></div>
+              )}
+            </div>
+          </div>
+          <h3 style={{fontSize:13,fontWeight:700,color:"#94A3B8",marginBottom:10,letterSpacing:"0.05em"}}>WEEKLY ASSIGNMENTS</h3>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {weeks.map((week,wi)=>{const wj=assignments[week];if(!wj)return null;const myJobs=jobs.filter(j=>wj[j.id]?.assigned?.includes(selectedBrother));if(!myJobs.length)return null;return(
+              <div key={week} style={{background:wi===currentWeekIdx?"#1E293B":"#151922",borderRadius:10,padding:"10px 14px",border:wi===currentWeekIdx?"1px solid #10B981":"1px solid #1E293B"}}>
+                <div style={{fontSize:11,color:wi===currentWeekIdx?"#10B981":"#64748B",fontWeight:600,fontFamily:"'Space Mono',monospace",marginBottom:6}}>{week} {wi===currentWeekIdx&&"← Current"}</div>
+                {myJobs.map(j=><div key={j.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:6,height:6,borderRadius:"50%",background:(AREA_META[j.area]||{color:"#6B7280"}).color}}/><span style={{fontSize:13,color:"#CBD5E1"}}>{j.name}</span></div>
+                  <StatusBadge status={wj[j.id].status} onClick={()=>cycleStatus(week,j.id,adminUnlocked)}/>
+                </div>)}
+              </div>);})}
+          </div>
+        </div>}
+
         {/* ══════ LEADERBOARD ══════ */}
         {view==="leaderboard"&&<div className="fu">
           <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4}}>Accountability Board</h2>
           <p style={{fontSize:12,color:"#64748B",marginBottom:16}}>Weekly jobs ranked by completion</p>
-          {brothers.map(b=>({name:b,...stats[b],pct:stats[b]?.total>0?((stats[b].done+(stats[b].verified||0))/stats[b].total)*100:0})).sort((a,b)=>b.pct-a.pct).map((b,i)=>{
+          {brotherNames.map(b=>({name:b,...stats[b],pct:stats[b]?.total>0?((stats[b].done+(stats[b].verified||0))/stats[b].total)*100:0})).sort((a,b)=>b.pct-a.pct).map((b,i)=>{
             const medal=i<3?["🥇","🥈","🥉"][i]:null;
             return<div key={b.name} className="fu" style={{display:"flex",alignItems:"center",gap:12,background:"#1E293B",borderRadius:10,padding:"12px 16px",border:i<3?`1px solid ${["#F59E0B","#94A3B8","#CD7F32"][i]}40`:"1px solid #334155",marginBottom:6,animationDelay:`${i*.03}s`}}>
               <div style={{width:28,fontSize:medal?18:14,textAlign:"center",color:"#64748B",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{medal||(i+1)}</div>
@@ -652,8 +768,8 @@ export default function HouseJobsApp(){
           <div style={{marginTop:20,background:"#1E293B",borderRadius:12,padding:16,border:"1px solid #334155"}}>
             <h3 style={{fontSize:13,fontWeight:700,color:"#EF4444",marginBottom:8,letterSpacing:"0.05em"}}>FINE TRACKER</h3>
             <p style={{fontSize:12,color:"#64748B",lineHeight:1.6,marginBottom:12}}>Per Amendment 22: missed jobs = fines. 3+ misses flagged for Standards.</p>
-            {brothers.filter(b=>(stats[b]?.missed||0)>0).length===0?<div style={{fontSize:13,color:"#10B981",textAlign:"center",padding:10}}>No missed jobs yet!</div>
-            :brothers.filter(b=>(stats[b]?.missed||0)>0).sort((a,b)=>(stats[b]?.missed||0)-(stats[a]?.missed||0)).map(b=><div key={b} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #334155"}}><span style={{fontSize:13,color:"#CBD5E1"}}>{b}</span><span style={{fontSize:12,fontWeight:700,fontFamily:"'Space Mono',monospace",color:(stats[b]?.missed||0)>=3?"#EF4444":"#F59E0B"}}>{stats[b]?.missed||0} miss{(stats[b]?.missed||0)!==1?"es":""}{(stats[b]?.missed||0)>=3&&" ⚠️"}</span></div>)}
+            {brotherNames.filter(b=>(stats[b]?.missed||0)>0).length===0?<div style={{fontSize:13,color:"#10B981",textAlign:"center",padding:10}}>No missed jobs yet!</div>
+            :brotherNames.filter(b=>(stats[b]?.missed||0)>0).sort((a,b)=>(stats[b]?.missed||0)-(stats[a]?.missed||0)).map(b=><div key={b} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #334155"}}><span style={{fontSize:13,color:"#CBD5E1"}}>{b}</span><span style={{fontSize:12,fontWeight:700,fontFamily:"'Space Mono',monospace",color:(stats[b]?.missed||0)>=3?"#EF4444":"#F59E0B"}}>{stats[b]?.missed||0} miss{(stats[b]?.missed||0)!==1?"es":""}{(stats[b]?.missed||0)>=3&&" ⚠️"}</span></div>)}
           </div>
         </div>}
 
@@ -676,7 +792,31 @@ export default function HouseJobsApp(){
           <div style={{display:"flex",gap:6,marginBottom:16}}>
             {[{key:"brothers",label:`Brothers (${brothers.length})`},{key:"jobs",label:`Jobs (${jobs.length})`},{key:"weeks",label:`Weeks (${weeks.length})`}].map(t=><button key={t.key} onClick={()=>setSetupTab(t.key)} style={{flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:setupTab===t.key?"#F59E0B18":"#1E293B",border:`1px solid ${setupTab===t.key?"#F59E0B":"#334155"}`,color:setupTab===t.key?"#F59E0B":"#94A3B8"}}>{t.label}</button>)}
           </div>
-          {setupTab==="brothers"&&<div><div style={{display:"flex",gap:8,marginBottom:12}}><Input value={editName} onChange={setEditName} placeholder="Add a brother..." style={{flex:1}}/><SmallBtn onClick={()=>{if(editName.trim()&&!brothers.includes(editName.trim())){setBrothers([...brothers,editName.trim()]);setEditName("");}}}>+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{brothers.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1E293B",borderRadius:8,padding:"8px 12px",border:"1px solid #334155"}}><span style={{fontSize:14,color:"#CBD5E1"}}>{b}</span><button onClick={()=>setBrothers(brothers.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
+          {setupTab==="brothers"&&<div>
+            <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+              <Input value={editName} onChange={setEditName} placeholder="Add a brother..." style={{flex:1,minWidth:140}}/>
+              <select value={editFloor} onChange={e=>setEditFloor(e.target.value)} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 10px",fontSize:13,fontFamily:"inherit"}}>
+                <option value="basement">Basement</option><option value="first">1st Floor</option><option value="second">2nd Floor</option><option value="third">3rd Floor</option>
+              </select>
+              <SmallBtn onClick={()=>{if(editName.trim()&&!brotherNames.includes(editName.trim())){setBrothers([...brothers,{name:editName.trim(),floor:editFloor}]);setEditName("");}}}>+ Add</SmallBtn>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {brothers.map((b,i)=>{const bo=typeof b==="string"?{name:b,floor:"first"}:b;const fc=AREA_META[bo.floor]||{color:"#6B7280",label:"?"};return(
+                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1E293B",borderRadius:8,padding:"8px 12px",border:"1px solid #334155"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:8,height:8,borderRadius:"50%",background:fc.color}}/>
+                    <span style={{fontSize:14,color:"#CBD5E1"}}>{bo.name}</span>
+                    <span style={{fontSize:10,color:fc.color,background:`${fc.color}18`,padding:"1px 6px",borderRadius:4,fontWeight:600}}>{fc.label}</span>
+                  </div>
+                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <select value={bo.floor} onChange={e=>{const n=[...brothers];n[i]=typeof b==="string"?{name:b,floor:e.target.value}:{...b,floor:e.target.value};setBrothers(n);}} style={{background:"#0F172A",border:"1px solid #334155",color:"#94A3B8",borderRadius:4,padding:"2px 20px 2px 6px",fontSize:11,fontFamily:"inherit"}}>
+                      <option value="basement">BSMT</option><option value="first">1F</option><option value="second">2F</option><option value="third">3F</option>
+                    </select>
+                    <button onClick={()=>setBrothers(brothers.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
+                  </div>
+                </div>);})}
+            </div>
+          </div>}
           {setupTab==="jobs"&&<div>
             <div style={{background:"#1E293B",borderRadius:10,padding:14,border:"1px solid #334155",marginBottom:12}}>
               <div style={{display:"flex",gap:8,marginBottom:8}}><Input value={editJobName} onChange={setEditJobName} placeholder="Job name..." style={{flex:1}}/><select value={editJobArea} onChange={e=>setEditJobArea(e.target.value)} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 14px",fontSize:13,fontFamily:"inherit"}}>{AREA_KEYS.map(k=><option key={k} value={k}>{AREA_META[k].label}</option>)}</select></div>
