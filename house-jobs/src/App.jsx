@@ -1201,6 +1201,14 @@ export default function HouseJobsApp(){
                         <span>{name}</span>
                         <span style={{fontSize:10,color:evenPins.includes(name)?"#8B5CF6":"#06B6D4"}}>{evenPins.includes(name)?"EVEN":"ODD"}</span>
                       </button>)}
+                      {!alreadyAdded.has(editName.trim())&&<button onClick={()=>{setBrothers([...brothers,{name:editName.trim(),floor:editFloor}]);setEditName("");}} style={{display:"flex",justifyContent:"space-between",width:"100%",padding:"8px 12px",background:"none",border:"none",color:"#F59E0B",fontSize:12,textAlign:"left",cursor:"pointer",fontFamily:"inherit",alignItems:"center"}}
+                        onMouseEnter={e=>e.target.style.background="#334155"} onMouseLeave={e=>e.target.style.background="none"}>
+                        <span>+ Add "{editName.trim()}" manually</span>
+                      </button>}
+                    </div>}
+                    {query&&filtered.length===0&&!alreadyAdded.has(editName.trim())&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1E293B",border:"1px solid #334155",borderRadius:"0 0 8px 8px",zIndex:10}}>
+                      <button onClick={()=>{setBrothers([...brothers,{name:editName.trim(),floor:editFloor}]);setEditName("");}} style={{display:"block",width:"100%",padding:"10px 12px",background:"none",border:"none",color:"#F59E0B",fontSize:13,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}
+                        onMouseEnter={e=>e.target.style.background="#334155"} onMouseLeave={e=>e.target.style.background="none"}>+ Add "{editName.trim()}" manually</button>
                     </div>}
                   </div>
                   <select value={editFloor} onChange={e=>setEditFloor(e.target.value)} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 10px",fontSize:13,fontFamily:"inherit"}}>
