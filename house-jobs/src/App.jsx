@@ -218,14 +218,52 @@ function generateAssignments(brothers, jobs, weeks) {
 
 function generateSundayAssignments(ep,op,sj,weeks) {
   const asg={};
-  weeks.forEach((week,wi)=>{const isE=wi%2===0;const pool=shuffle(isE?[...ep]:[...op]);const wa={group:isE?"even":"odd",bothGroups:false,jobs:{}};let pi=0;
-  sj.forEach(job=>{const a=[];for(let p=0;p<job.people;p++){a.push(pool[pi%pool.length]);pi++;}wa.jobs[job.id]={assigned:a,status:"pending"};});asg[week]=wa;});
+  weeks.forEach((week,wi)=>{
+    const isE=wi%2===0;
+    const pool=shuffle(isE?[...ep]:[...op]);
+    const wa={group:isE?"even":"odd",bothGroups:false,jobs:{}};
+    wa.jobs = assignEveryoneToSundayJobs(pool, sj);
+    asg[week]=wa;
+  });
   return asg;
+}
+
+function assignEveryoneToSundayJobs(pool, sj){
+  // Distribute ALL people across jobs, expanding job sizes as needed
+  const jobs={};
+  if(!sj.length||!pool.length) return jobs;
+  
+  // Start with base people counts
+  const jobSlots = sj.map(j=>({id:j.id, count:j.people, assigned:[]}));
+  const totalBase = jobSlots.reduce((s,j)=>s+j.count,0);
+  
+  // If more people than slots, distribute extras round-robin
+  let extra = pool.length - totalBase;
+  if(extra > 0){
+    let idx=0;
+    while(extra>0){ jobSlots[idx%jobSlots.length].count++; idx++; extra--; }
+  }
+  
+  // Assign people using least-loaded approach
+  let pi=0;
+  jobSlots.forEach(slot=>{
+    for(let p=0;p<slot.count&&pi<pool.length;p++){
+      slot.assigned.push(pool[pi]); pi++;
+    }
+    jobs[slot.id]={assigned:slot.assigned,status:"pending"};
+  });
+  
+  // If somehow still people left (shouldn't happen), add to first job
+  while(pi<pool.length){
+    if(jobs[sj[0].id]) jobs[sj[0].id].assigned.push(pool[pi]);
+    pi++;
+  }
+  return jobs;
 }
 
 function regenerateSundayWeek(wa,ep,op,sj) {
   const pool=shuffle(wa.bothGroups?[...ep,...op]:wa.group==="even"?[...ep]:[...op]);
-  const jobs={};let pi=0;sj.forEach(job=>{const a=[];for(let p=0;p<job.people;p++){a.push(pool[pi%pool.length]);pi++;}jobs[job.id]={assigned:a,status:"pending"};});
+  const jobs = assignEveryoneToSundayJobs(pool, sj);
   return{...wa,jobs};
 }
 
@@ -313,6 +351,7 @@ export default function HouseJobsApp(){
   // Weekly job manual override
   const[weeklyEditingJob,setWeeklyEditingJob]=useState(null);
   const[weeklyEditNames,setWeeklyEditNames]=useState("");
+  const[weeklyEditDuration,setWeeklyEditDuration]=useState("1");
   const[editingJobIdx,setEditingJobIdx]=useState(null);
   const[sunSetupTab,setSunSetupTab]=useState("even");
   const[sunEditName,setSunEditName]=useState("");
@@ -383,9 +422,47 @@ export default function HouseJobsApp(){
     if(u[week]?.[jobId]){const c=u[week][jobId].status;if(isAdmin)u[week][jobId].status=STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length];else{if(c==="pending")u[week][jobId].status="done";else if(c==="done")u[week][jobId].status="pending";}}
     setAssignments(u);saveA(u);
   }
-  function overrideWeeklyJob(week,jobId,names){
+  function overrideWeeklyJob(week,jobId,names,duration){
     const u=JSON.parse(JSON.stringify(assignments));
-    if(u[week]?.[jobId])u[week][jobId].assigned=names;
+    const startIdx=weeks.indexOf(week);
+    if(startIdx===-1)return;
+    
+    // Apply override for the specified duration
+    const numWeeks = duration==="semester" ? weeks.length-startIdx : Math.min(parseInt(duration)||1, weeks.length-startIdx);
+    for(let w=0;w<numWeeks;w++){
+      const wk=weeks[startIdx+w];
+      if(u[wk]?.[jobId]) u[wk][jobId].assigned=names;
+    }
+    
+    // Reshuffle remaining weeks after the override period for this job
+    const reshuffleStart = startIdx+numWeeks;
+    if(reshuffleStart<weeks.length){
+      const bList=brothers.map(b=>typeof b==="string"?{name:b,floor:"first"}:b);
+      const job=jobs.find(j=>j.id===jobId);
+      if(job){
+        const allNames=shuffle(bList.map(b=>b.name));
+        const byFloor={};
+        bList.forEach(b=>{if(!byFloor[b.floor])byFloor[b.floor]=[];byFloor[b.floor].push(b.name);});
+        Object.keys(byFloor).forEach(f=>{byFloor[f]=shuffle(byFloor[f]);});
+        const floor=AREA_TO_FLOOR[job.area];
+        const pool=floor&&byFloor[floor]?.length?byFloor[floor]:allNames;
+        
+        // Count existing workload for balancing
+        const wl={};pool.forEach(n=>{wl[n]=0;});
+        Object.values(u).forEach(wj=>{if(wj?.[jobId]?.assigned)wj[jobId].assigned.forEach(n=>{if(wl[n]!==undefined)wl[n]++;});});
+        
+        for(let w=reshuffleStart;w<weeks.length;w++){
+          const wk=weeks[w];
+          if(u[wk]?.[jobId]&&u[wk][jobId].status==="pending"){
+            const sorted=[...pool].sort((a,b)=>(wl[a]||0)-(wl[b]||0));
+            const picked=sorted.slice(0,job.people);
+            picked.forEach(n=>{wl[n]=(wl[n]||0)+1;});
+            u[wk][jobId].assigned=picked;
+          }
+        }
+      }
+    }
+    
     setAssignments(u);
     saveA(u);
   }
@@ -560,7 +637,24 @@ export default function HouseJobsApp(){
                     <StatusBadge status={data.status} onClick={e=>{e.stopPropagation();cycleStatus(currentWeek,job.id,adminUnlocked);}}/>
                   </div>
                 </div>
-                {isEd&&adminUnlocked&&<div onClick={e=>e.stopPropagation()} style={{marginTop:10,paddingTop:10,borderTop:"1px solid #334155",display:"flex",gap:8}}><Input value={weeklyEditNames} onChange={setWeeklyEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={()=>{overrideWeeklyJob(currentWeek,job.id,weeklyEditNames.split(",").map(n=>n.trim()).filter(Boolean));setWeeklyEditingJob(null);}}>Save</SmallBtn></div>}
+                {isEd&&adminUnlocked&&<div onClick={e=>e.stopPropagation()} style={{marginTop:10,paddingTop:10,borderTop:"1px solid #334155",display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",gap:8}}>
+                    <Input value={weeklyEditNames} onChange={setWeeklyEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <label style={{fontSize:11,color:"#94A3B8",whiteSpace:"nowrap"}}>Duration:</label>
+                    <select value={weeklyEditDuration} onChange={e=>setWeeklyEditDuration(e.target.value)} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:6,padding:"5px 24px 5px 8px",fontSize:12,fontFamily:"inherit",flex:1}}>
+                      <option value="1">This week only</option>
+                      <option value="2">2 weeks</option>
+                      <option value="3">3 weeks</option>
+                      <option value="4">4 weeks</option>
+                      <option value="6">6 weeks</option>
+                      <option value="8">8 weeks</option>
+                      <option value="semester">Rest of semester</option>
+                    </select>
+                    <SmallBtn onClick={()=>{overrideWeeklyJob(currentWeek,job.id,weeklyEditNames.split(",").map(n=>n.trim()).filter(Boolean),weeklyEditDuration);setWeeklyEditingJob(null);setWeeklyEditDuration("1");}}>Save</SmallBtn>
+                  </div>
+                </div>}
                 {showJobDetail===job.id&&!isEd&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #334155",fontSize:12,color:"#64748B",lineHeight:1.6}}><span style={{color:"#94A3B8",fontWeight:600}}>What to do: </span>{job.desc}</div>}
               </div>);})}
           </div>
