@@ -690,7 +690,7 @@ export default function HouseJobsApp(){
       <div style={{background:"linear-gradient(135deg,#261850,#1A0E3A)",borderBottom:"1px solid #D4A84330",padding:"20px 20px 16px",position:"sticky",top:0,zIndex:50}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div>
-            <div style={{display:"flex",alignItems:"center",gap:10}}><h1 style={{fontFamily:"'Space Mono',monospace",fontSize:20,fontWeight:700,color:"#D4A843",letterSpacing:"-0.02em"}}>ΣΦΕ HOUSE JOBS</h1><SyncDot connected={fbConnected}/></div>
+            <div style={{display:"flex",alignItems:"center",gap:10}}><h1 style={{fontFamily:"'Space Mono',monospace",fontSize:20,fontWeight:700,color:"#D4A843",letterSpacing:"-0.02em"}}>ΣΦΕ HOUSE BOARD</h1><SyncDot connected={fbConnected}/></div>
             <p style={{fontSize:12,color:"#64748B",marginTop:2,fontFamily:"'Space Mono',monospace"}}>{semesterName} • Week {currentWeekIdx+1}/{weeks.length}</p>
           </div>
           {!["setup","sunday_setup","project_setup"].includes(view)&&<div style={{width:52,height:52,borderRadius:"50%",background:`conic-gradient(#D4A843 ${completionPct*3.6}deg,#261850 ${completionPct*3.6}deg)`,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:42,height:42,borderRadius:"50%",background:"#1A1040",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#D4A843",fontFamily:"'Space Mono',monospace"}}>{completionPct}%</div></div>}
