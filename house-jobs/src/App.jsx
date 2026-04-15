@@ -1184,20 +1184,40 @@ export default function HouseJobsApp(){
             {[{key:"brothers",label:`Brothers (${brothers.length})`},{key:"jobs",label:`Jobs (${jobs.length})`},{key:"weeks",label:`Weeks (${weeks.length})`}].map(t=><button key={t.key} onClick={()=>setSetupTab(t.key)} style={{flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:setupTab===t.key?"#F59E0B18":"#1E293B",border:`1px solid ${setupTab===t.key?"#F59E0B":"#334155"}`,color:setupTab===t.key?"#F59E0B":"#94A3B8"}}>{t.label}</button>)}
           </div>
           {setupTab==="brothers"&&<div>
-            <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-              <Input value={editName} onChange={setEditName} placeholder="Add a brother..." style={{flex:1,minWidth:140}}/>
-              <select value={editFloor} onChange={e=>setEditFloor(e.target.value)} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 10px",fontSize:13,fontFamily:"inherit"}}>
-                <option value="basement">Basement</option><option value="first">1st Floor</option><option value="second">2nd Floor</option><option value="third">3rd Floor</option>
-              </select>
-              <SmallBtn onClick={()=>{if(editName.trim()&&!brotherNames.includes(editName.trim())){setBrothers([...brothers,{name:editName.trim(),floor:editFloor}]);setEditName("");}}}>+ Add</SmallBtn>
-            </div>
+            <p style={{fontSize:12,color:"#64748B",marginBottom:12,lineHeight:1.5}}>Add brothers who live in house from the pin roster. Assign their floor for job rotation.</p>
+            {(()=>{
+              const allPinNames=[...new Set([...evenPins,...oddPins])].sort();
+              const alreadyAdded=new Set(brotherNames);
+              const available=allPinNames.filter(n=>!alreadyAdded.has(n));
+              const query=editName.trim().toLowerCase();
+              const filtered=query?available.filter(n=>n.toLowerCase().includes(query)):available;
+              return<div style={{position:"relative",marginBottom:12}}>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <div style={{flex:1,minWidth:140,position:"relative"}}>
+                    <Input value={editName} onChange={setEditName} placeholder="Search pin roster to add..." style={{}}/>
+                    {query&&filtered.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1E293B",border:"1px solid #334155",borderRadius:"0 0 8px 8px",maxHeight:180,overflowY:"auto",zIndex:10}}>
+                      {filtered.slice(0,10).map(name=><button key={name} onClick={()=>{setBrothers([...brothers,{name,floor:editFloor}]);setEditName("");}} style={{display:"flex",justifyContent:"space-between",width:"100%",padding:"8px 12px",background:"none",border:"none",borderBottom:"1px solid #0F172A",color:"#E2E8F0",fontSize:13,textAlign:"left",cursor:"pointer",fontFamily:"inherit",alignItems:"center"}}
+                        onMouseEnter={e=>e.target.style.background="#334155"} onMouseLeave={e=>e.target.style.background="none"}>
+                        <span>{name}</span>
+                        <span style={{fontSize:10,color:evenPins.includes(name)?"#8B5CF6":"#06B6D4"}}>{evenPins.includes(name)?"EVEN":"ODD"}</span>
+                      </button>)}
+                    </div>}
+                  </div>
+                  <select value={editFloor} onChange={e=>setEditFloor(e.target.value)} style={{background:"#0F172A",border:"1px solid #334155",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 10px",fontSize:13,fontFamily:"inherit"}}>
+                    <option value="basement">Basement</option><option value="first">1st Floor</option><option value="second">2nd Floor</option><option value="third">3rd Floor</option>
+                  </select>
+                </div>
+                {available.length===0&&<p style={{fontSize:11,color:"#64748B",marginTop:6}}>All brothers from pin roster have been added.</p>}
+              </div>;
+            })()}
             <div style={{display:"flex",flexDirection:"column",gap:4}}>
-              {brothers.map((b,i)=>{const bo=typeof b==="string"?{name:b,floor:"first"}:b;const fc=AREA_META[bo.floor]||{color:"#6B7280",label:"?"};return(
+              {brothers.map((b,i)=>{const bo=typeof b==="string"?{name:b,floor:"first"}:b;const fc=AREA_META[bo.floor]||{color:"#6B7280",label:"?"};const pinGroup=evenPins.includes(bo.name)?"EVEN":oddPins.includes(bo.name)?"ODD":"";return(
                 <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1E293B",borderRadius:8,padding:"8px 12px",border:"1px solid #334155"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:fc.color}}/>
                     <span style={{fontSize:14,color:"#CBD5E1"}}>{bo.name}</span>
                     <span style={{fontSize:10,color:fc.color,background:`${fc.color}18`,padding:"1px 6px",borderRadius:4,fontWeight:600}}>{fc.label}</span>
+                    {pinGroup&&<span style={{fontSize:9,color:pinGroup==="EVEN"?"#8B5CF6":"#06B6D4"}}>{pinGroup}</span>}
                   </div>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
                     <select value={bo.floor} onChange={e=>{const n=[...brothers];n[i]=typeof b==="string"?{name:b,floor:e.target.value}:{...b,floor:e.target.value};setBrothers(n);}} style={{background:"#0F172A",border:"1px solid #334155",color:"#94A3B8",borderRadius:4,padding:"2px 20px 2px 6px",fontSize:11,fontFamily:"inherit"}}>
