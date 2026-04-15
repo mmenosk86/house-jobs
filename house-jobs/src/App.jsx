@@ -317,7 +317,7 @@ function DiffBadge({d}){const c=DIFF_COLORS[d]||DIFF_COLORS.easy;return<span sty
 export default function HouseJobsApp(){
   const[loading,setLoading]=useState(true);
   const[fbConnected,setFbConnected]=useState(false);
-  const[view,setView]=useState("dashboard");
+  const[view,setView]=useState("me");
   const[semesterName,setSemesterName]=useState("Fall 2026");
   const[brothers,setBrothers]=useState(DEFAULT_BROTHERS);
   const[jobs,setJobs]=useState(DEFAULT_JOBS);
@@ -339,6 +339,11 @@ export default function HouseJobsApp(){
   const[projects,setProjects]=useState(DEFAULT_PROJECTS);
   const[weeklyProjects,setWeeklyProjects]=useState({});
   const[projClaimName,setProjClaimName]=useState("");
+  // My View
+  const[myName,setMyName]=useState(()=>{try{return localStorage.getItem("housejobs_myname")||"";}catch{return"";}});
+  // Announcements
+  const[announcements,setAnnouncements]=useState([]);
+  const[newAnnouncement,setNewAnnouncement]=useState("");
   // Setup
   const[adminUnlocked,setAdminUnlocked]=useState(false);
   const[pwInput,setPwInput]=useState("");
@@ -376,11 +381,28 @@ export default function HouseJobsApp(){
   const skipSunSync=useRef(false);
   const skipProjSync=useRef(false);
 
+  // Auto-detect current week based on today's date
+  function detectCurrentWeek(weeksList){
+    const today=new Date();
+    const year=today.getFullYear();
+    for(let i=0;i<weeksList.length;i++){
+      const parts=weeksList[i].split("-");
+      if(parts.length!==2)continue;
+      const parseDate=(s)=>{const p=s.trim().split("/");if(p.length!==2)return null;return new Date(year,parseInt(p[0])-1,parseInt(p[1]));};
+      const start=parseDate(parts[0]);
+      const end=parseDate(parts[1]);
+      if(!start||!end)continue;
+      end.setHours(23,59,59);
+      if(today>=start&&today<=end) return i;
+    }
+    return 0;
+  }
+
   // ─── INIT ───
   useEffect(()=>{(async()=>{
     const connected=await initFirebase(); setFbConnected(connected);
     if(connected){
-      const cfg=await fbGet("config"),asg=await fbGet("assignments"),sunCfg=await fbGet("sundayConfig"),sunAsg=await fbGet("sundayAssignments"),projCfg=await fbGet("projectsConfig"),projAsg=await fbGet("weeklyProjects");
+      const cfg=await fbGet("config"),asg=await fbGet("assignments"),sunCfg=await fbGet("sundayConfig"),sunAsg=await fbGet("sundayAssignments"),projCfg=await fbGet("projectsConfig"),projAsg=await fbGet("weeklyProjects"),ann=await fbGet("announcements");
       const w=cfg?.weeks||DEFAULT_WEEKS;
       if(cfg){setBrothers(cfg.brothers||DEFAULT_BROTHERS);setJobs(cfg.jobs||DEFAULT_JOBS);setWeeks(w);setSemesterName(cfg.semesterName||"Fall 2026");}
       if(asg)setAssignments(desanitizeObjKeys(asg,w));else{const a=generateAssignments(cfg?.brothers||DEFAULT_BROTHERS,cfg?.jobs||DEFAULT_JOBS,w);setAssignments(a);await fbSet("assignments",sanitizeObjKeys(a));}
@@ -388,12 +410,16 @@ export default function HouseJobsApp(){
       if(sunAsg)setSundayAssignments(desanitizeObjKeys(sunAsg,w));else{const sa=generateSundayAssignments(sunCfg?.evenPins||DEFAULT_EVEN_PINS,sunCfg?.oddPins||DEFAULT_ODD_PINS,sunCfg?.sundayJobs||DEFAULT_SUNDAY_JOBS,w);setSundayAssignments(sa);await fbSet("sundayAssignments",sanitizeObjKeys(sa));}
       if(projCfg)setProjects(projCfg);
       if(projAsg)setWeeklyProjects(desanitizeObjKeys(projAsg,w));else{const wp=generateWeeklyProjects(projCfg||DEFAULT_PROJECTS,w);setWeeklyProjects(wp);await fbSet("weeklyProjects",sanitizeObjKeys(wp));}
+      if(ann)setAnnouncements(Array.isArray(ann)?ann:[]);
       fbOnValue("assignments",d=>{if(skipSync.current){skipSync.current=false;return;}if(d)setAssignments(desanitizeObjKeys(d,w));});
       fbOnValue("config",d=>{if(d){setBrothers(d.brothers||DEFAULT_BROTHERS);setJobs(d.jobs||DEFAULT_JOBS);setWeeks(d.weeks||DEFAULT_WEEKS);setSemesterName(d.semesterName||"Fall 2026");}});
       fbOnValue("sundayAssignments",d=>{if(skipSunSync.current){skipSunSync.current=false;return;}if(d)setSundayAssignments(desanitizeObjKeys(d,w));});
       fbOnValue("sundayConfig",d=>{if(d){setEvenPins(d.evenPins||DEFAULT_EVEN_PINS);setOddPins(d.oddPins||DEFAULT_ODD_PINS);setSundayJobs(d.sundayJobs||DEFAULT_SUNDAY_JOBS);}});
       fbOnValue("weeklyProjects",d=>{if(skipProjSync.current){skipProjSync.current=false;return;}if(d)setWeeklyProjects(desanitizeObjKeys(d,w));});
       fbOnValue("projectsConfig",d=>{if(d)setProjects(d);});
+      fbOnValue("announcements",d=>{if(d)setAnnouncements(Array.isArray(d)?d:[]);});
+      // Auto-detect week
+      setCurrentWeekIdx(detectCurrentWeek(w));
     }else{
       try{
         const cfg=await window.storage.get("housejobs:config"),asg=await window.storage.get("housejobs:assignments");
@@ -403,6 +429,7 @@ export default function HouseJobsApp(){
         if(sunAsg?.value)setSundayAssignments(JSON.parse(sunAsg.value));else setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS));
         const wp=await window.storage.get("housejobs:weeklyProjects");
         if(wp?.value)setWeeklyProjects(JSON.parse(wp.value));else setWeeklyProjects(generateWeeklyProjects(DEFAULT_PROJECTS,DEFAULT_WEEKS));
+        setCurrentWeekIdx(detectCurrentWeek(DEFAULT_WEEKS));
       }catch{setAssignments(generateAssignments(DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_WEEKS));setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS));setWeeklyProjects(generateWeeklyProjects(DEFAULT_PROJECTS,DEFAULT_WEEKS));}
     }
     setLoading(false);
@@ -417,6 +444,25 @@ export default function HouseJobsApp(){
   const saveSunCfg=useCallback(async(ep,op,sj)=>{try{if(fbConnected)await fbSet("sundayConfig",{evenPins:ep,oddPins:op,sundayJobs:sj});else await window.storage.set("housejobs:sundayConfig",JSON.stringify({evenPins:ep,oddPins:op,sundayJobs:sj}));}catch(e){console.error("saveSunCfg error:",e);}},[fbConnected]);
   const saveProjA=useCallback(async a=>{try{if(fbConnected){skipProjSync.current=true;await fbSet("weeklyProjects",sanitizeObjKeys(a));}else await window.storage.set("housejobs:weeklyProjects",JSON.stringify(a));}catch(e){console.error("saveProjA error:",e);}},[fbConnected]);
   const saveProjCfg=useCallback(async p=>{try{if(fbConnected)await fbSet("projectsConfig",p);}catch(e){console.error("saveProjCfg error:",e);}},[fbConnected]);
+  const saveAnnouncements=useCallback(async a=>{try{if(fbConnected)await fbSet("announcements",a);}catch(e){console.error("saveAnn error:",e);}},[fbConnected]);
+
+  function addAnnouncement(text){
+    if(!text.trim())return;
+    const ann={id:Date.now(),text:text.trim(),date:new Date().toLocaleDateString(),pinned:false};
+    const updated=[ann,...announcements];
+    setAnnouncements(updated);saveAnnouncements(updated);setNewAnnouncement("");
+  }
+  function deleteAnnouncement(id){
+    const updated=announcements.filter(a=>a.id!==id);
+    setAnnouncements(updated);saveAnnouncements(updated);
+  }
+  function togglePinAnnouncement(id){
+    const updated=announcements.map(a=>a.id===id?{...a,pinned:!a.pinned}:a);
+    setAnnouncements(updated);saveAnnouncements(updated);
+  }
+  function setMyNameAndSave(name){
+    setMyName(name);try{localStorage.setItem("housejobs_myname",name);}catch{}
+  }
 
   async function checkPassword(){const h=await hashPassword(pwInput);if(h==="d85802bb9e9169949367f292bfdf4ca200139b4c44bc47a50700535f16fba13e"){setAdminUnlocked(true);setPwError(false);}else setPwError(true);}
 
@@ -653,12 +699,125 @@ export default function HouseJobsApp(){
 
       {/* NAV */}
       <div style={{display:"flex",gap:1,padding:"12px 12px 0",borderBottom:"1px solid #1E293B",background:"#0F1117",overflowX:"auto"}}>
-        {[{key:"dashboard",label:"Weekly"},{key:"sunday",label:"Sunday"},{key:"projects",label:"Projects"},{key:"roster",label:"Roster"},{key:"leaderboard",label:"Board"},{key:"setup",label:"⚙"}].map(tab=>
-          <button key={tab.key} onClick={()=>{setView(tab.key);setSelectedBrother(null);}} style={{flex:1,padding:"10px 0 12px",background:"none",border:"none",minWidth:0,color:view===tab.key?"#F8FAFC":"#64748B",fontSize:11,fontWeight:view===tab.key?700:500,cursor:"pointer",fontFamily:"inherit",borderBottom:view===tab.key?`2px solid ${tab.key==="setup"?"#F59E0B":tab.key==="projects"?"#EC4899":tab.key==="sunday"?"#8B5CF6":"#10B981"}`:"2px solid transparent"}}>{tab.label}</button>
+        {[{key:"me",label:"Me"},{key:"dashboard",label:"Weekly"},{key:"sunday",label:"Sunday"},{key:"projects",label:"Projects"},{key:"roster",label:"Roster"},{key:"leaderboard",label:"Board"},{key:"setup",label:"⚙"}].map(tab=>
+          <button key={tab.key} onClick={()=>{setView(tab.key);setSelectedBrother(null);}} style={{flex:1,padding:"10px 0 12px",background:"none",border:"none",minWidth:0,color:view===tab.key?"#F8FAFC":"#64748B",fontSize:11,fontWeight:view===tab.key?700:500,cursor:"pointer",fontFamily:"inherit",borderBottom:view===tab.key?`2px solid ${tab.key==="me"?"#EC4899":tab.key==="setup"?"#F59E0B":tab.key==="projects"?"#EC4899":tab.key==="sunday"?"#8B5CF6":"#10B981"}`:"2px solid transparent"}}>{tab.label}</button>
         )}
       </div>
 
       <div style={{padding:"16px 20px 100px"}}>
+
+        {/* ══════ MY VIEW ══════ */}
+        {view==="me"&&<div className="fu">
+          {!myName?<div style={{maxWidth:340,margin:"30px auto",textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:16}}>👋</div>
+            <h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9",marginBottom:8}}>Welcome!</h2>
+            <p style={{fontSize:13,color:"#64748B",marginBottom:20,lineHeight:1.5}}>Enter your name to see all your assignments in one place.</p>
+            <Input value={pwInput} onChange={v=>setPwInput(v)} placeholder="Your full name (as it appears in the roster)..." style={{marginBottom:12,textAlign:"center"}}/>
+            <button onClick={()=>{if(pwInput.trim()){setMyNameAndSave(pwInput.trim());setPwInput("");}}} style={{width:"100%",background:"linear-gradient(135deg,#EC4899,#DB2777)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Set My Name</button>
+          </div>
+          :<div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div>
+                <h2 style={{fontSize:20,fontWeight:700,color:"#F8FAFC"}}>{myName}</h2>
+                <p style={{fontSize:12,color:"#64748B"}}>Your assignments this week</p>
+              </div>
+              <button onClick={()=>setMyNameAndSave("")} style={{background:"#1E293B",border:"1px solid #334155",color:"#94A3B8",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Change</button>
+            </div>
+
+            {/* Announcements */}
+            {announcements.length>0&&<div style={{marginBottom:20}}>
+              {[...announcements].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)).map(ann=>
+                <div key={ann.id} style={{background:ann.pinned?"#F59E0B12":"#1E293B",borderRadius:10,padding:"12px 16px",border:`1px solid ${ann.pinned?"#F59E0B40":"#334155"}`,marginBottom:6}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                    <div style={{flex:1}}>
+                      {ann.pinned&&<span style={{fontSize:10,color:"#F59E0B",fontWeight:700,marginRight:6}}>📌 PINNED</span>}
+                      <p style={{fontSize:14,color:"#F1F5F9",lineHeight:1.5}}>{ann.text}</p>
+                      <p style={{fontSize:11,color:"#64748B",marginTop:4}}>{ann.date}</p>
+                    </div>
+                    {adminUnlocked&&<div style={{display:"flex",gap:4,flexShrink:0}}>
+                      <button onClick={()=>togglePinAnnouncement(ann.id)} style={{background:"none",border:"none",color:ann.pinned?"#F59E0B":"#64748B",cursor:"pointer",fontSize:12,padding:"0 2px"}}>📌</button>
+                      <button onClick={()=>deleteAnnouncement(ann.id)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1}}>×</button>
+                    </div>}
+                  </div>
+                </div>
+              )}
+            </div>}
+
+            {adminUnlocked&&<div style={{background:"#1E293B",borderRadius:10,padding:"12px 16px",border:"1px solid #334155",marginBottom:20}}>
+              <div style={{display:"flex",gap:8}}>
+                <Input value={newAnnouncement} onChange={setNewAnnouncement} placeholder="Post an announcement..." style={{flex:1,padding:"8px 10px",fontSize:13}}/>
+                <SmallBtn onClick={()=>addAnnouncement(newAnnouncement)} color="#F59E0B">Post</SmallBtn>
+              </div>
+            </div>}
+
+            {/* My Weekly Jobs */}
+            <h3 style={{fontSize:13,fontWeight:700,color:"#10B981",marginBottom:10,letterSpacing:"0.05em"}}>WEEKLY HOUSE JOBS</h3>
+            {(()=>{
+              const myJobs=jobs.filter(j=>weekData[j.id]?.assigned?.includes(myName));
+              return myJobs.length>0?<div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:20}}>
+                {myJobs.map(j=>{const data=weekData[j.id];const area=AREA_META[j.area]||{color:"#6B7280"};return(
+                  <div key={j.id} style={{background:"#1E293B",borderRadius:10,padding:"12px 16px",border:"1px solid #334155"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <div style={{width:8,height:8,borderRadius:"50%",background:area.color,flexShrink:0}}/>
+                        <span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{j.name}</span>
+                      </div>
+                      <StatusBadge status={data.status} onClick={()=>cycleStatus(currentWeek,j.id,adminUnlocked)}/>
+                    </div>
+                    <div style={{fontSize:12,color:"#64748B",marginTop:6,marginLeft:16}}>{j.desc}</div>
+                  </div>);})}
+              </div>:<div style={{background:"#1E293B",borderRadius:10,padding:"16px",border:"1px solid #334155",textAlign:"center",color:"#64748B",fontSize:13,marginBottom:20}}>No weekly jobs assigned to you this week.</div>;
+            })()}
+
+            {/* My Sunday Jobs */}
+            <h3 style={{fontSize:13,fontWeight:700,color:"#8B5CF6",marginBottom:10,letterSpacing:"0.05em"}}>SUNDAY CLEANING</h3>
+            {(()=>{
+              const mySunJobs=sundayJobs.filter(j=>sunWeekData.jobs?.[j.id]?.assigned?.includes(myName));
+              const isMakeup=(sunWeekData.makeups||[]).includes(myName);
+              return<div style={{marginBottom:20}}>
+                {mySunJobs.length>0?<div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {mySunJobs.map(j=>{const data=sunWeekData.jobs[j.id];return(
+                    <div key={j.id} style={{background:"#1E293B",borderRadius:10,padding:"12px 16px",border:"1px solid #334155"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <div style={{width:8,height:8,borderRadius:"50%",background:"#8B5CF6",flexShrink:0}}/>
+                          <span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{j.name}</span>
+                        </div>
+                        <StatusBadge status={data.status} onClick={()=>cycleSundayStatus(currentWeek,j.id,adminUnlocked)}/>
+                      </div>
+                      <div style={{fontSize:12,color:"#64748B",marginTop:6,marginLeft:16}}>{j.desc}</div>
+                    </div>);})}
+                </div>:<div style={{background:"#1E293B",borderRadius:10,padding:"16px",border:"1px solid #334155",textAlign:"center",color:"#64748B",fontSize:13}}>
+                  {isMakeup?"You're signed up for makeup this week.":"Not assigned to Sunday cleaning this week."}
+                </div>}
+              </div>;
+            })()}
+
+            {/* My Projects */}
+            <h3 style={{fontSize:13,fontWeight:700,color:"#EC4899",marginBottom:10,letterSpacing:"0.05em"}}>MY PROJECTS</h3>
+            {(()=>{
+              const myProj=(projWeekData.projects||[]).filter(p=>p.claimedBy===myName);
+              return myProj.length>0?<div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {myProj.map((p,i)=><div key={i} style={{background:"#1E293B",borderRadius:10,padding:"12px 16px",border:"1px solid #334155"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div><span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{p.name}</span><DiffBadge d={p.difficulty}/></div>
+                    <span style={{fontSize:12,fontWeight:600,color:p.status==="verified"?"#3B82F6":p.status==="done"?"#10B981":"#F59E0B"}}>{p.status==="verified"?"✓ Verified":p.status==="done"?"✓ Done":"In Progress"}</span>
+                  </div>
+                </div>)}
+              </div>:<div style={{background:"#1E293B",borderRadius:10,padding:"16px",border:"1px solid #334155",textAlign:"center",color:"#64748B",fontSize:13}}>No projects claimed. Check the Projects tab!</div>;
+            })()}
+
+            {/* Quick Stats */}
+            {stats[myName]&&<div style={{marginTop:20,background:"#1E293B",borderRadius:12,padding:16,border:"1px solid #334155"}}>
+              <h3 style={{fontSize:13,fontWeight:700,color:"#94A3B8",marginBottom:10,letterSpacing:"0.05em"}}>SEMESTER STATS</h3>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8}}>
+                {[{n:stats[myName].done,l:"Done",c:"#10B981"},{n:stats[myName].verified,l:"Verified",c:"#3B82F6"},{n:stats[myName].missed,l:"Missed",c:"#EF4444"},{n:stats[myName].pending,l:"Pending",c:"#F59E0B"}].map(s=>
+                  <div key={s.l} style={{textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace"}}>{s.n}</div><div style={{fontSize:10,color:"#64748B",marginTop:2}}>{s.l}</div></div>
+                )}
+              </div>
+            </div>}
+          </div>}
+        </div>}
 
         {/* ══════ DASHBOARD ══════ */}
         {view==="dashboard"&&<div className="fu">
