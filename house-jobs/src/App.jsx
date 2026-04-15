@@ -229,35 +229,43 @@ function generateSundayAssignments(ep,op,sj,weeks) {
 }
 
 function assignEveryoneToSundayJobs(pool, sj){
-  // Distribute ALL people across jobs, expanding job sizes as needed
   const jobs={};
   if(!sj.length||!pool.length) return jobs;
   
-  // Start with base people counts
-  const jobSlots = sj.map(j=>({id:j.id, count:j.people, assigned:[]}));
-  const totalBase = jobSlots.reduce((s,j)=>s+j.count,0);
+  const totalPeople = pool.length;
+  const jobSlots = sj.map(j=>({id:j.id, basePeople:j.people, assigned:[]}));
+  const totalBase = jobSlots.reduce((s,j)=>s+j.basePeople,0);
   
-  // If more people than slots, distribute extras round-robin
-  let extra = pool.length - totalBase;
-  if(extra > 0){
+  if(totalPeople >= totalBase){
+    // More people than base slots — fill base then distribute extras
+    let pi=0;
+    jobSlots.forEach(slot=>{
+      for(let p=0;p<slot.basePeople;p++){slot.assigned.push(pool[pi]);pi++;}
+    });
+    // Distribute remaining people round-robin
     let idx=0;
-    while(extra>0){ jobSlots[idx%jobSlots.length].count++; idx++; extra--; }
+    while(pi<totalPeople){
+      jobSlots[idx%jobSlots.length].assigned.push(pool[pi]);
+      pi++;idx++;
+    }
+  }else{
+    // Fewer people than base slots — give at least 1 person per job, then fill
+    let pi=0;
+    // First pass: 1 person per job (up to available people)
+    for(let j=0;j<jobSlots.length&&pi<totalPeople;j++){
+      jobSlots[j].assigned.push(pool[pi]);pi++;
+    }
+    // Second pass: distribute remaining to jobs that wanted more
+    let idx=0;
+    while(pi<totalPeople){
+      jobSlots[idx%jobSlots.length].assigned.push(pool[pi]);
+      pi++;idx++;
+    }
   }
   
-  // Assign people using least-loaded approach
-  let pi=0;
   jobSlots.forEach(slot=>{
-    for(let p=0;p<slot.count&&pi<pool.length;p++){
-      slot.assigned.push(pool[pi]); pi++;
-    }
     jobs[slot.id]={assigned:slot.assigned,status:"pending"};
   });
-  
-  // If somehow still people left (shouldn't happen), add to first job
-  while(pi<pool.length){
-    if(jobs[sj[0].id]) jobs[sj[0].id].assigned.push(pool[pi]);
-    pi++;
-  }
   return jobs;
 }
 
@@ -427,30 +435,71 @@ export default function HouseJobsApp(){
     const startIdx=weeks.indexOf(week);
     if(startIdx===-1)return;
     
-    // Apply override for the specified duration
+    const bList=brothers.map(b=>typeof b==="string"?{name:b,floor:"first"}:b);
+    const allNames=bList.map(b=>b.name);
+    const byFloor={};
+    bList.forEach(b=>{if(!byFloor[b.floor])byFloor[b.floor]=[];byFloor[b.floor].push(b.name);});
+    
     const numWeeks = duration==="semester" ? weeks.length-startIdx : Math.min(parseInt(duration)||1, weeks.length-startIdx);
+    
     for(let w=0;w<numWeeks;w++){
       const wk=weeks[startIdx+w];
-      if(u[wk]?.[jobId]) u[wk][jobId].assigned=names;
+      if(!u[wk])continue;
+      
+      // Find what jobs these people were previously on this week
+      const oldJobIds=[];
+      Object.entries(u[wk]).forEach(([jid,jdata])=>{
+        if(jid===jobId)return;
+        if(!jdata?.assigned)return;
+        const hadPerson=jdata.assigned.some(n=>names.includes(n));
+        if(hadPerson) oldJobIds.push(jid);
+      });
+      
+      // Remove overridden people from their old jobs
+      oldJobIds.forEach(jid=>{
+        u[wk][jid].assigned=u[wk][jid].assigned.filter(n=>!names.includes(n));
+      });
+      
+      // Assign overridden people to the new job
+      u[wk][jobId].assigned=names;
+      
+      // Backfill the old jobs that lost people
+      oldJobIds.forEach(jid=>{
+        const oldJob=jobs.find(j=>j.id===jid);
+        if(!oldJob)return;
+        const needed=oldJob.people-u[wk][jid].assigned.length;
+        if(needed<=0)return;
+        
+        // Find who's already assigned this week across ALL jobs
+        const assignedThisWeek=new Set();
+        Object.values(u[wk]).forEach(jdata=>{if(jdata?.assigned)jdata.assigned.forEach(n=>assignedThisWeek.add(n));});
+        
+        // Pick from appropriate pool, preferring unassigned brothers
+        const floor=AREA_TO_FLOOR[oldJob.area];
+        const pool=floor&&byFloor[floor]?.length?byFloor[floor]:allNames;
+        const unassigned=pool.filter(n=>!assignedThisWeek.has(n));
+        const backfill=shuffle(unassigned).slice(0,needed);
+        
+        // If not enough unassigned, pull least-loaded from pool
+        if(backfill.length<needed){
+          const remaining=pool.filter(n=>!assignedThisWeek.has(n)&&!backfill.includes(n));
+          const alreadyAssigned=pool.filter(n=>assignedThisWeek.has(n)&&!u[wk][jid].assigned.includes(n)&&!names.includes(n));
+          while(backfill.length<needed&&alreadyAssigned.length){backfill.push(alreadyAssigned.shift());}
+        }
+        
+        u[wk][jid].assigned=[...u[wk][jid].assigned,...backfill];
+      });
     }
     
-    // Reshuffle remaining weeks after the override period for this job
+    // Reshuffle remaining weeks after override period for the target job
     const reshuffleStart = startIdx+numWeeks;
     if(reshuffleStart<weeks.length){
-      const bList=brothers.map(b=>typeof b==="string"?{name:b,floor:"first"}:b);
       const job=jobs.find(j=>j.id===jobId);
       if(job){
-        const allNames=shuffle(bList.map(b=>b.name));
-        const byFloor={};
-        bList.forEach(b=>{if(!byFloor[b.floor])byFloor[b.floor]=[];byFloor[b.floor].push(b.name);});
-        Object.keys(byFloor).forEach(f=>{byFloor[f]=shuffle(byFloor[f]);});
         const floor=AREA_TO_FLOOR[job.area];
         const pool=floor&&byFloor[floor]?.length?byFloor[floor]:allNames;
-        
-        // Count existing workload for balancing
         const wl={};pool.forEach(n=>{wl[n]=0;});
         Object.values(u).forEach(wj=>{if(wj?.[jobId]?.assigned)wj[jobId].assigned.forEach(n=>{if(wl[n]!==undefined)wl[n]++;});});
-        
         for(let w=reshuffleStart;w<weeks.length;w++){
           const wk=weeks[w];
           if(u[wk]?.[jobId]&&u[wk][jobId].status==="pending"){
@@ -613,10 +662,14 @@ export default function HouseJobsApp(){
 
         {/* ══════ DASHBOARD ══════ */}
         {view==="dashboard"&&<div className="fu">
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-            <div/>
-            {adminUnlocked&&<SmallBtn onClick={reshuffleWeeklyAssignments} color="#10B981">🔄 Reshuffle</SmallBtn>}
-          </div>
+          {(()=>{
+            const assignedSet=new Set();
+            Object.values(weekData).forEach(j=>{(j?.assigned||[]).forEach(n=>assignedSet.add(n));});
+            return<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{fontSize:12,color:assignedSet.size>=brotherNames.length?"#10B981":"#F59E0B",fontFamily:"'Space Mono',monospace",fontWeight:600}}>{assignedSet.size}/{brotherNames.length} brothers assigned</div>
+              {adminUnlocked&&<SmallBtn onClick={reshuffleWeeklyAssignments} color="#10B981">🔄 Reshuffle</SmallBtn>}
+            </div>;
+          })()}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
             {[{n:weekStats.done,l:"Done",c:"#10B981"},{n:weekStats.pending,l:"Pending",c:"#F59E0B"},{n:weekStats.missed,l:"Missed",c:"#EF4444"}].map(s=><div key={s.l} style={{background:"#1E293B",borderRadius:10,padding:"14px 12px",textAlign:"center",border:"1px solid #334155"}}><div style={{fontSize:26,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{s.n}</div><div style={{fontSize:11,color:"#64748B",marginTop:4}}>{s.l}</div></div>)}
           </div>
@@ -662,10 +715,20 @@ export default function HouseJobsApp(){
 
         {/* ══════ SUNDAY ══════ */}
         {view==="sunday"&&<div className="fu">
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          {(()=>{
+            const pool=sunWeekData.bothGroups?[...evenPins,...oddPins]:sunWeekData.group==="even"?evenPins:oddPins;
+            const makeups=sunWeekData.makeups||[];
+            const totalPool=pool.length+makeups.length;
+            const assignedSet=new Set();
+            Object.values(sunWeekData.jobs||{}).forEach(j=>{(j.assigned||[]).forEach(n=>assignedSet.add(n));});
+            const totalAssigned=assignedSet.size;
+            return<>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <div><h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4}}>Sunday Cleaning</h2><GroupBadge group={sunWeekData.group} bothGroups={sunWeekData.bothGroups}/></div>
             {adminUnlocked&&<div style={{display:"flex",gap:6}}><SmallBtn onClick={()=>toggleBothGroups(currentWeek)} color="#F59E0B">{sunWeekData.bothGroups?"Split":"Both"}</SmallBtn><SmallBtn onClick={()=>reshuffleSundayWeek(currentWeek)} color="#8B5CF6">Shuffle</SmallBtn></div>}
           </div>
+          <div style={{fontSize:12,color:totalAssigned>=totalPool?"#10B981":"#F59E0B",marginBottom:16,fontFamily:"'Space Mono',monospace",fontWeight:600}}>{totalAssigned}/{totalPool} brothers assigned</div>
+          </>;})()}
           {!adminUnlocked&&<div style={{background:"#1E293B",borderRadius:10,padding:"10px 14px",border:"1px solid #334155",marginBottom:16,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:12,color:"#64748B"}}>🔒 HM access for edits. </span><Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Password" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={checkPassword}>Unlock</SmallBtn></div>}
           <div className="job-grid">
             {sundayJobs.map((job,i)=>{const data=sunWeekData.jobs?.[job.id];if(!data)return null;const isEd=sundayEditingJob===job.id;return(
