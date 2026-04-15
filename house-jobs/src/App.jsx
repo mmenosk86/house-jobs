@@ -842,10 +842,38 @@ export default function HouseJobsApp(){
           {(()=>{
             const assignedSet=new Set();
             Object.values(weekData).forEach(j=>{(j?.assigned||[]).forEach(n=>assignedSet.add(n));});
-            return<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{fontSize:12,color:assignedSet.size>=brotherNames.length?"#10B981":"#F59E0B",fontFamily:"'Space Mono',monospace",fontWeight:600}}>{assignedSet.size}/{brotherNames.length} brothers assigned</div>
-              {adminUnlocked&&<SmallBtn onClick={reshuffleWeeklyAssignments} color="#10B981">🔄 Reshuffle</SmallBtn>}
-            </div>;
+            const unassigned=brotherNames.filter(n=>!assignedSet.has(n));
+            const allAssigned=unassigned.length===0;
+            return<>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:allAssigned?12:8}}>
+                <div style={{fontSize:12,color:allAssigned?"#10B981":"#F59E0B",fontFamily:"'Space Mono',monospace",fontWeight:600}}>{assignedSet.size}/{brotherNames.length} brothers assigned</div>
+                {adminUnlocked&&<SmallBtn onClick={reshuffleWeeklyAssignments} color="#10B981">🔄 Reshuffle</SmallBtn>}
+              </div>
+              {!allAssigned&&adminUnlocked&&<div style={{background:"#F59E0B10",border:"1px solid #F59E0B30",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
+                <div style={{fontSize:12,color:"#F59E0B",fontWeight:600,marginBottom:8}}>Unassigned brothers:</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {unassigned.map(name=><div key={name} style={{display:"flex",alignItems:"center",gap:4,background:"#1E293B",borderRadius:6,padding:"4px 8px",border:"1px solid #334155"}}>
+                    <span style={{fontSize:12,color:"#CBD5E1"}}>{name}</span>
+                    <button onClick={()=>{
+                      // Find the job with fewest people assigned this week and add them
+                      const u=JSON.parse(JSON.stringify(assignments));
+                      const wk=currentWeek;
+                      if(!u[wk])return;
+                      let minJob=null,minCount=Infinity;
+                      jobs.forEach(j=>{
+                        if(!u[wk][j.id])return;
+                        const count=u[wk][j.id].assigned?.length||0;
+                        if(count<minCount){minCount=count;minJob=j.id;}
+                      });
+                      if(minJob&&u[wk][minJob]){
+                        u[wk][minJob].assigned=[...(u[wk][minJob].assigned||[]),name];
+                        setAssignments(u);saveA(u);
+                      }
+                    }} style={{background:"#10B98130",border:"none",color:"#10B981",borderRadius:4,padding:"1px 6px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ Assign</button>
+                  </div>)}
+                </div>
+              </div>}
+            </>;
           })()}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
             {[{n:weekStats.done,l:"Done",c:"#10B981"},{n:weekStats.pending,l:"Pending",c:"#F59E0B"},{n:weekStats.missed,l:"Missed",c:"#EF4444"}].map(s=><div key={s.l} style={{background:"#1E293B",borderRadius:10,padding:"14px 12px",textAlign:"center",border:"1px solid #334155"}}><div style={{fontSize:26,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{s.n}</div><div style={{fontSize:11,color:"#64748B",marginTop:4}}>{s.l}</div></div>)}
@@ -904,7 +932,35 @@ export default function HouseJobsApp(){
             <div><h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4}}>Sunday Cleaning</h2><GroupBadge group={sunWeekData.group} bothGroups={sunWeekData.bothGroups}/></div>
             {adminUnlocked&&<div style={{display:"flex",gap:6}}><SmallBtn onClick={()=>toggleBothGroups(currentWeek)} color="#F59E0B">{sunWeekData.bothGroups?"Split":"Both"}</SmallBtn><SmallBtn onClick={()=>reshuffleSundayWeek(currentWeek)} color="#8B5CF6">Shuffle</SmallBtn></div>}
           </div>
-          <div style={{fontSize:12,color:totalAssigned>=totalPool?"#10B981":"#F59E0B",marginBottom:16,fontFamily:"'Space Mono',monospace",fontWeight:600}}>{totalAssigned}/{totalPool} brothers assigned</div>
+          <div style={{fontSize:12,color:totalAssigned>=totalPool?"#10B981":"#F59E0B",marginBottom:totalAssigned>=totalPool?16:8,fontFamily:"'Space Mono',monospace",fontWeight:600}}>{totalAssigned}/{totalPool} brothers assigned</div>
+          {(()=>{
+            const fullPool=[...pool,...makeups];
+            const unassignedSun=fullPool.filter(n=>!assignedSet.has(n));
+            if(unassignedSun.length===0||!adminUnlocked)return null;
+            return<div style={{background:"#8B5CF610",border:"1px solid #8B5CF630",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
+              <div style={{fontSize:12,color:"#8B5CF6",fontWeight:600,marginBottom:8}}>Unassigned brothers:</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {unassignedSun.map(name=><div key={name} style={{display:"flex",alignItems:"center",gap:4,background:"#1E293B",borderRadius:6,padding:"4px 8px",border:"1px solid #334155"}}>
+                  <span style={{fontSize:12,color:"#CBD5E1"}}>{name}</span>
+                  <button onClick={()=>{
+                    const u=JSON.parse(JSON.stringify(sundayAssignments));
+                    const wk=currentWeek;
+                    if(!u[wk]?.jobs)return;
+                    let minJob=null,minCount=Infinity;
+                    sundayJobs.forEach(j=>{
+                      if(!u[wk].jobs[j.id])return;
+                      const count=u[wk].jobs[j.id].assigned?.length||0;
+                      if(count<minCount){minCount=count;minJob=j.id;}
+                    });
+                    if(minJob&&u[wk].jobs[minJob]){
+                      u[wk].jobs[minJob].assigned=[...(u[wk].jobs[minJob].assigned||[]),name];
+                      setSundayAssignments(u);saveSunA(u);
+                    }
+                  }} style={{background:"#10B98130",border:"none",color:"#10B981",borderRadius:4,padding:"1px 6px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ Assign</button>
+                </div>)}
+              </div>
+            </div>;
+          })()}
           </>;})()}
           {!adminUnlocked&&<div style={{background:"#1E293B",borderRadius:10,padding:"10px 14px",border:"1px solid #334155",marginBottom:16,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:12,color:"#64748B"}}>🔒 HM access for edits. </span><Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Password" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={checkPassword}>Unlock</SmallBtn></div>}
           <div className="job-grid">
