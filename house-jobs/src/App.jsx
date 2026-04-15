@@ -711,9 +711,27 @@ export default function HouseJobsApp(){
           {!myName?<div style={{maxWidth:340,margin:"30px auto",textAlign:"center"}}>
             <div style={{fontSize:32,marginBottom:16}}>👋</div>
             <h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9",marginBottom:8}}>Welcome!</h2>
-            <p style={{fontSize:13,color:"#64748B",marginBottom:20,lineHeight:1.5}}>Enter your name to see all your assignments in one place.</p>
-            <Input value={pwInput} onChange={v=>setPwInput(v)} placeholder="Your full name (as it appears in the roster)..." style={{marginBottom:12,textAlign:"center"}}/>
-            <button onClick={()=>{if(pwInput.trim()){setMyNameAndSave(pwInput.trim());setPwInput("");}}} style={{width:"100%",background:"linear-gradient(135deg,#EC4899,#DB2777)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Set My Name</button>
+            <p style={{fontSize:13,color:"#64748B",marginBottom:20,lineHeight:1.5}}>Start typing your name to find yourself in the roster.</p>
+            {(()=>{
+              // Build full name list from all sources
+              const allNamesSet=new Set([...brotherNames,...evenPins,...oddPins]);
+              const allNamesList=[...allNamesSet].sort();
+              const query=pwInput.trim().toLowerCase();
+              const filtered=query?allNamesList.filter(n=>n.toLowerCase().includes(query)):[];
+              const exactMatch=allNamesList.find(n=>n.toLowerCase()===query);
+              return<div style={{position:"relative"}}>
+                <Input value={pwInput} onChange={v=>setPwInput(v)} placeholder="Start typing your name..." style={{marginBottom:0,textAlign:"center"}}/>
+                {query&&!exactMatch&&filtered.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1E293B",border:"1px solid #334155",borderRadius:"0 0 8px 8px",maxHeight:200,overflowY:"auto",zIndex:10}}>
+                  {filtered.slice(0,8).map(name=><button key={name} onClick={()=>{setMyNameAndSave(name);setPwInput("");}} style={{display:"block",width:"100%",padding:"10px 14px",background:"none",border:"none",borderBottom:"1px solid #0F172A",color:"#E2E8F0",fontSize:14,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}
+                    onMouseEnter={e=>e.target.style.background="#334155"} onMouseLeave={e=>e.target.style.background="none"}>{name}</button>)}
+                </div>}
+                {query&&filtered.length===0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1E293B",border:"1px solid #334155",borderRadius:"0 0 8px 8px",padding:"10px 14px",zIndex:10}}>
+                  <p style={{fontSize:12,color:"#EF4444",marginBottom:8}}>No match found in roster.</p>
+                  <button onClick={()=>{if(pwInput.trim()){setMyNameAndSave(pwInput.trim());setPwInput("");}}} style={{width:"100%",background:"#334155",border:"none",color:"#CBD5E1",borderRadius:6,padding:"8px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Use "{pwInput.trim()}" anyway</button>
+                </div>}
+                {exactMatch&&<button onClick={()=>{setMyNameAndSave(exactMatch);setPwInput("");}} style={{width:"100%",marginTop:12,background:"linear-gradient(135deg,#EC4899,#DB2777)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Continue as {exactMatch}</button>}
+              </div>;
+            })()}
           </div>
           :<div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
