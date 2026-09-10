@@ -176,103 +176,96 @@ function generateAssignments(brothers, jobs, weeks) {
   const byFloor = {};
   bList.forEach(b=>{if(!byFloor[b.floor])byFloor[b.floor]=[];byFloor[b.floor].push(b.name);});
   Object.keys(byFloor).forEach(f=>{byFloor[f]=shuffle(byFloor[f]);});
-
-  // Track total assignments per brother for balancing
-  const workload = {};
-  allNames.forEach(n=>{workload[n]=0;});
-
-  // Pick the N least-loaded brothers from a pool
-  function pickLeastLoaded(pool, count){
-    const sorted = [...pool].sort((a,b)=>(workload[a]||0)-(workload[b]||0));
-    const picked = sorted.slice(0, count);
+  const workload={}; allNames.forEach(n=>{workload[n]=0;});
+  function pickLeastLoaded(pool,count){
+    const sorted=[...pool].sort((a,b)=>(workload[a]||0)-(workload[b]||0));
+    const picked=sorted.slice(0,count);
     picked.forEach(n=>{workload[n]=(workload[n]||0)+1;});
     return picked;
   }
-
-  const asg = {};
-
-  weeks.forEach((week)=>{
+  const staticAssignments={};
+  jobs.filter(job=>!job.rotating&&!job.floorRotate).forEach(job=>{
+    const floor=AREA_TO_FLOOR[job.area];
+    const pool=floor&&byFloor[floor]?.length?byFloor[floor]:allNames;
+    staticAssignments[job.id]=pickLeastLoaded(pool,job.people);
+  });
+  const asg={};
+  weeks.forEach(week=>{
     asg[week]={};
     jobs.forEach(job=>{
       let assigned;
-      if(job.rotating){
-        // Global rotating: pick least-loaded from ALL brothers
-        assigned = pickLeastLoaded(allNames, job.people);
-      }else if(job.floorRotate){
-        // Floor rotating: pick least-loaded from floor pool
-        const floor = AREA_TO_FLOOR[job.area];
-        const pool = floor && byFloor[floor]?.length ? byFloor[floor] : allNames;
-        assigned = pickLeastLoaded(pool, job.people);
-      }else{
-        // Static: pick least-loaded from floor pool (or all), but same every week
-        // For static, we assign once and reuse — but still balance initially
-        const floor = AREA_TO_FLOOR[job.area];
-        const pool = floor && byFloor[floor]?.length ? byFloor[floor] : allNames;
-        assigned = pickLeastLoaded(pool, job.people);
-      }
-      asg[week][job.id]={assigned, status:"pending"};
+      if(job.rotating)assigned=pickLeastLoaded(allNames,job.people);
+      else if(job.floorRotate){
+        const floor=AREA_TO_FLOOR[job.area];
+        const pool=floor&&byFloor[floor]?.length?byFloor[floor]:allNames;
+        assigned=pickLeastLoaded(pool,job.people);
+      }else assigned=[...(staticAssignments[job.id]||[])];
+      asg[week][job.id]={assigned,status:"pending"};
     });
   });
   return asg;
 }
 
-function generateSundayAssignments(ep,op,sj,weeks) {
-  const asg={};
-  weeks.forEach((week,wi)=>{
-    const isE=wi%2===0;
-    const pool=shuffle(isE?[...ep]:[...op]);
-    const wa={group:isE?"even":"odd",bothGroups:false,jobs:{}};
-    wa.jobs = assignEveryoneToSundayJobs(pool, sj);
-    asg[week]=wa;
-  });
-  return asg;
+function kitchenPoolKey(pool){return[...new Set(pool)].sort().join("|");}
+function pickKitchenTeam(pool,count,history=[]){
+  if(!pool.length||count<=0)return[];
+  const usage={}; pool.forEach(name=>{usage[name]=0;});
+  history.forEach(name=>{if(usage[name]!==undefined)usage[name]++;});
+  const unused=pool.filter(name=>!history.includes(name));
+  const candidates=unused.length>=count?shuffle(unused):shuffle(pool).sort((a,b)=>(usage[a]||0)-(usage[b]||0));
+  return candidates.slice(0,count);
 }
-
-function assignEveryoneToSundayJobs(pool, sj){
-  const jobs={};
-  if(!sj.length||!pool.length) return jobs;
-  
-  const totalPeople = pool.length;
-  const jobSlots = sj.map(j=>({id:j.id, basePeople:j.people, assigned:[]}));
-  const totalBase = jobSlots.reduce((s,j)=>s+j.basePeople,0);
-  
-  if(totalPeople >= totalBase){
-    // More people than base slots — fill base then distribute extras
+function assignPoolToSundayJobs(pool,sj){
+  const jobs={}; if(!sj.length||!pool.length)return jobs;
+  const slots=sj.map(j=>({id:j.id,basePeople:j.people,assigned:[]}));
+  const totalBase=slots.reduce((sum,j)=>sum+j.basePeople,0);
+  if(pool.length>=totalBase){
     let pi=0;
-    jobSlots.forEach(slot=>{
-      for(let p=0;p<slot.basePeople;p++){slot.assigned.push(pool[pi]);pi++;}
-    });
-    // Distribute remaining people round-robin
-    let idx=0;
-    while(pi<totalPeople){
-      jobSlots[idx%jobSlots.length].assigned.push(pool[pi]);
-      pi++;idx++;
-    }
+    slots.forEach(slot=>{for(let p=0;p<slot.basePeople;p++){slot.assigned.push(pool[pi]);pi++;}});
+    let idx=0; while(pi<pool.length){slots[idx%slots.length].assigned.push(pool[pi]);pi++;idx++;}
   }else{
-    // Fewer people than base slots — give at least 1 person per job, then fill
-    let pi=0;
-    // First pass: 1 person per job (up to available people)
-    for(let j=0;j<jobSlots.length&&pi<totalPeople;j++){
-      jobSlots[j].assigned.push(pool[pi]);pi++;
-    }
-    // Second pass: distribute remaining to jobs that wanted more
-    let idx=0;
-    while(pi<totalPeople){
-      jobSlots[idx%jobSlots.length].assigned.push(pool[pi]);
-      pi++;idx++;
-    }
+    let pi=0; for(let j=0;j<slots.length&&pi<pool.length;j++){slots[j].assigned.push(pool[pi]);pi++;}
+    let idx=0; while(pi<pool.length){slots[idx%slots.length].assigned.push(pool[pi]);pi++;idx++;}
   }
-  
-  jobSlots.forEach(slot=>{
-    jobs[slot.id]={assigned:slot.assigned,status:"pending"};
-  });
+  slots.forEach(slot=>{jobs[slot.id]={assigned:slot.assigned,status:"pending"};});
   return jobs;
 }
-
-function regenerateSundayWeek(wa,ep,op,sj) {
+function assignEveryoneToSundayJobs(pool,sj,kitchenTeam=[]){
+  if(!sj.length||!pool.length)return{};
+  const kitchenJob=sj.find(j=>j.id==="sun_kitchen");
+  const selected=kitchenJob?kitchenTeam.filter(name=>pool.includes(name)).slice(0,kitchenJob.people):[];
+  const remainingPool=pool.filter(name=>!selected.includes(name));
+  const remainingJobs=kitchenJob?sj.filter(j=>j.id!=="sun_kitchen"):sj;
+  const jobs=assignPoolToSundayJobs(remainingPool,remainingJobs);
+  if(kitchenJob)jobs[kitchenJob.id]={assigned:selected,status:"pending"};
+  return jobs;
+}
+function generateSundayAssignments(ep,op,sj,weeks){
+  const asg={},kitchenHistory={};
+  weeks.forEach((week,wi)=>{
+    const isE=wi%2===0, pool=shuffle(isE?[...ep]:[...op]), key=kitchenPoolKey(pool);
+    const history=kitchenHistory[key]||[], kitchenJob=sj.find(j=>j.id==="sun_kitchen");
+    const kitchenTeam=pickKitchenTeam(pool,kitchenJob?.people||0,history);
+    kitchenHistory[key]=[...history,...kitchenTeam];
+    const wa={group:isE?"even":"odd",bothGroups:false,jobs:{}};
+    wa.jobs=assignEveryoneToSundayJobs(pool,sj,kitchenTeam); asg[week]=wa;
+  });
+  return asg;
+}
+function getKitchenHistory(assignments,weeks,targetWeek,pool){
+  const targetIndex=weeks.indexOf(targetWeek); if(targetIndex<0)return[];
+  const names=new Set(pool),history=[];
+  weeks.slice(0,targetIndex).forEach(week=>{
+    const assigned=assignments?.[week]?.jobs?.sun_kitchen?.assigned||[];
+    assigned.forEach(name=>{if(names.has(name))history.push(name);});
+  });
+  return history;
+}
+function regenerateSundayWeek(wa,ep,op,sj,history=[]){
   const pool=shuffle(wa.bothGroups?[...ep,...op]:wa.group==="even"?[...ep]:[...op]);
-  const jobs = assignEveryoneToSundayJobs(pool, sj);
-  return{...wa,jobs};
+  const kitchenJob=sj.find(j=>j.id==="sun_kitchen");
+  const kitchenTeam=pickKitchenTeam(pool,kitchenJob?.people||0,history);
+  return{...wa,jobs:assignEveryoneToSundayJobs(pool,sj,kitchenTeam)};
 }
 
 function generateWeeklyProjects(projects, weeks) {
@@ -293,6 +286,10 @@ function generateWeeklyProjects(projects, weeks) {
 
 async function hashPassword(pw){const e=new TextEncoder().encode(pw);const b=await crypto.subtle.digest("SHA-256",e);return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join("");}
 
+// Local fallback used when Firebase is unavailable.
+async function localStoreGet(key){try{const value=localStorage.getItem(key);return value===null?null:{value};}catch{return null;}}
+async function localStoreSet(key,value){try{localStorage.setItem(key,value);}catch{}}
+
 // Firebase key sanitization
 function sanitizeKey(k){return k.replace(/[.#$/\[\]]/g,"_");}
 function sanitizeObjKeys(o){const r={};Object.entries(o).forEach(([k,v])=>{r[sanitizeKey(k)]=v;});return r;}
@@ -302,6 +299,7 @@ function desanitizeObjKeys(o,keys){const m={};keys.forEach(k=>{m[sanitizeKey(k)]
 let db=null,firebaseReady=false;
 async function initFirebase(){if(firebaseReady)return true;if(FIREBASE_CONFIG.apiKey==="YOUR_API_KEY")return false;try{const{initializeApp}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js");const{getDatabase}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");db=getDatabase(initializeApp(FIREBASE_CONFIG));firebaseReady=true;return true;}catch(e){return false;}}
 async function fbSet(p,d){if(!firebaseReady)return;const{ref,set}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return set(ref(db,p),d);}
+async function fbTransaction(p,updater){if(!firebaseReady)return null;const{ref,runTransaction}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return runTransaction(ref(db,p),updater);}
 async function fbGet(p){if(!firebaseReady)return null;const{ref,get}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");const s=await get(ref(db,p));return s.exists()?s.val():null;}
 async function fbOnValue(p,cb){if(!firebaseReady)return()=>{};const{ref,onValue}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return onValue(ref(db,p),s=>{cb(s.exists()?s.val():null);});}
 
@@ -427,12 +425,12 @@ export default function HouseJobsApp(){
       setCurrentWeekIdx(detectCurrentWeek(w));
     }else{
       try{
-        const cfg=await window.storage.get("housejobs:config"),asg=await window.storage.get("housejobs:assignments");
+        const cfg=await localStoreGet("housejobs:config"),asg=await localStoreGet("housejobs:assignments");
         if(cfg?.value){const p=JSON.parse(cfg.value);setBrothers(p.brothers||DEFAULT_BROTHERS);setJobs(p.jobs||DEFAULT_JOBS);setWeeks(p.weeks||DEFAULT_WEEKS);setSemesterName(p.semesterName||"Fall 2026");}
         if(asg?.value)setAssignments(JSON.parse(asg.value));else setAssignments(generateAssignments(DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_WEEKS));
-        const sunAsg=await window.storage.get("housejobs:sundayAssignments");
+        const sunAsg=await localStoreGet("housejobs:sundayAssignments");
         if(sunAsg?.value)setSundayAssignments(JSON.parse(sunAsg.value));else setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS));
-        const wp=await window.storage.get("housejobs:weeklyProjects");
+        const wp=await localStoreGet("housejobs:weeklyProjects");
         if(wp?.value)setWeeklyProjects(JSON.parse(wp.value));else setWeeklyProjects(generateWeeklyProjects(DEFAULT_PROJECTS,DEFAULT_WEEKS));
         setCurrentWeekIdx(detectCurrentWeek(DEFAULT_WEEKS));
       }catch{setAssignments(generateAssignments(DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_WEEKS));setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS));setWeeklyProjects(generateWeeklyProjects(DEFAULT_PROJECTS,DEFAULT_WEEKS));}
@@ -441,15 +439,24 @@ export default function HouseJobsApp(){
   })();},[]);
 
   // ─── SAVE ───
-  const saveA=useCallback(async a=>{try{if(fbConnected){skipSync.current=true;await fbSet("assignments",sanitizeObjKeys(a));}else{await window.storage.set("housejobs:assignments",JSON.stringify(a));}}catch(e){console.error("saveA error:",e);}},[fbConnected]);
+  const saveA=useCallback(async a=>{try{if(fbConnected){skipSync.current=true;await fbSet("assignments",sanitizeObjKeys(a));}else{await localStoreSet("housejobs:assignments",JSON.stringify(a));}}catch(e){console.error("saveA error:",e);}},[fbConnected]);
   const saveCfg=useCallback(async(b,j,w,sn)=>{try{
     const cleanJobs=j.map(job=>({...job,rotating:!!job.rotating,floorRotate:!!job.floorRotate}));
-    if(fbConnected)await fbSet("config",{brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn});else await window.storage.set("housejobs:config",JSON.stringify({brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn}));}catch(e){console.error("saveCfg error:",e);}},[fbConnected]);
-  const saveSunA=useCallback(async a=>{try{if(fbConnected){skipSunSync.current=true;await fbSet("sundayAssignments",sanitizeObjKeys(a));}else await window.storage.set("housejobs:sundayAssignments",JSON.stringify(a));}catch(e){console.error("saveSunA error:",e);}},[fbConnected]);
-  const saveSunCfg=useCallback(async(ep,op,sj)=>{try{if(fbConnected)await fbSet("sundayConfig",{evenPins:ep,oddPins:op,sundayJobs:sj});else await window.storage.set("housejobs:sundayConfig",JSON.stringify({evenPins:ep,oddPins:op,sundayJobs:sj}));}catch(e){console.error("saveSunCfg error:",e);}},[fbConnected]);
-  const saveProjA=useCallback(async a=>{try{if(fbConnected){skipProjSync.current=true;await fbSet("weeklyProjects",sanitizeObjKeys(a));}else await window.storage.set("housejobs:weeklyProjects",JSON.stringify(a));}catch(e){console.error("saveProjA error:",e);}},[fbConnected]);
+    if(fbConnected)await fbSet("config",{brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn});else await localStoreSet("housejobs:config",JSON.stringify({brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn}));}catch(e){console.error("saveCfg error:",e);}},[fbConnected]);
+  const saveSunA=useCallback(async a=>{try{if(fbConnected){skipSunSync.current=true;await fbSet("sundayAssignments",sanitizeObjKeys(a));}else await localStoreSet("housejobs:sundayAssignments",JSON.stringify(a));}catch(e){console.error("saveSunA error:",e);}},[fbConnected]);
+  const saveSunCfg=useCallback(async(ep,op,sj)=>{try{if(fbConnected)await fbSet("sundayConfig",{evenPins:ep,oddPins:op,sundayJobs:sj});else await localStoreSet("housejobs:sundayConfig",JSON.stringify({evenPins:ep,oddPins:op,sundayJobs:sj}));}catch(e){console.error("saveSunCfg error:",e);}},[fbConnected]);
+  const saveProjA=useCallback(async a=>{try{if(fbConnected){skipProjSync.current=true;await fbSet("weeklyProjects",sanitizeObjKeys(a));}else await localStoreSet("housejobs:weeklyProjects",JSON.stringify(a));}catch(e){console.error("saveProjA error:",e);}},[fbConnected]);
   const saveProjCfg=useCallback(async p=>{try{if(fbConnected)await fbSet("projectsConfig",p);}catch(e){console.error("saveProjCfg error:",e);}},[fbConnected]);
-  const saveAnnouncements=useCallback(async a=>{try{if(fbConnected)await fbSet("announcements",a);}catch(e){console.error("saveAnn error:",e);}},[fbConnected]);
+  const saveAnnouncements=useCallback(async a=>{try{if(fbConnected)await fbSet("announcements",a);else await localStoreSet("housejobs:announcements",JSON.stringify(a));}catch(e){console.error("saveAnn error:",e);}},[fbConnected]);
+  const saveAssignmentStatus=useCallback(async(week,jobId,status)=>{
+    if(fbConnected){try{await fbSet(`assignments/${sanitizeKey(week)}/${sanitizeKey(jobId)}/status`,status);}catch(e){console.error("save assignment status error:",e);}}
+  },[fbConnected]);
+  const saveSundayStatus=useCallback(async(week,jobId,status)=>{
+    if(fbConnected){try{await fbSet(`sundayAssignments/${sanitizeKey(week)}/jobs/${sanitizeKey(jobId)}/status`,status);}catch(e){console.error("save Sunday status error:",e);}}
+  },[fbConnected]);
+  const saveProjectItem=useCallback(async(week,projIdx,project)=>{
+    if(fbConnected){try{await fbSet(`weeklyProjects/${sanitizeKey(week)}/projects/${projIdx}`,project);}catch(e){console.error("save project error:",e);}}
+  },[fbConnected]);
 
   function addAnnouncement(text){
     if(!text.trim())return;
@@ -478,8 +485,13 @@ export default function HouseJobsApp(){
 
   function cycleStatus(week,jobId,isAdmin){
     const u=JSON.parse(JSON.stringify(assignments));
-    if(u[week]?.[jobId]){const c=u[week][jobId].status;if(isAdmin)u[week][jobId].status=STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length];else{if(c==="pending")u[week][jobId].status="done";else if(c==="done")u[week][jobId].status="pending";}}
-    setAssignments(u);saveA(u);
+    if(!u[week]?.[jobId])return;
+    const c=u[week][jobId].status;
+    const next=isAdmin?STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length]:c==="pending"?"done":c==="done"?"pending":c;
+    if(next===c)return;
+    u[week][jobId].status=next;
+    setAssignments(u);
+    if(fbConnected)saveAssignmentStatus(week,jobId,next);else saveA(u);
   }
   function overrideWeeklyJob(week,jobId,names,duration){
     const u=JSON.parse(JSON.stringify(assignments));
@@ -582,12 +594,34 @@ export default function HouseJobsApp(){
   }
   function cycleSundayStatus(week,jobId,isAdmin){
     const u=JSON.parse(JSON.stringify(sundayAssignments));
-    if(u[week]?.jobs?.[jobId]){const c=u[week].jobs[jobId].status;if(isAdmin)u[week].jobs[jobId].status=STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length];else{if(c==="pending")u[week].jobs[jobId].status="done";else if(c==="done")u[week].jobs[jobId].status="pending";}}
+    if(!u[week]?.jobs?.[jobId])return;
+    const c=u[week].jobs[jobId].status;
+    const next=isAdmin?STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length]:c==="pending"?"done":c==="done"?"pending":c;
+    if(next===c)return;
+    u[week].jobs[jobId].status=next;
+    setSundayAssignments(u);
+    if(fbConnected)saveSundayStatus(week,jobId,next);else saveSunA(u);
+  }
+  function toggleBothGroups(week){
+    const u=JSON.parse(JSON.stringify(sundayAssignments));
+    if(u[week]){
+      u[week].bothGroups=!u[week].bothGroups;
+      const pool=u[week].bothGroups?[...evenPins,...oddPins]:u[week].group==="even"?evenPins:oddPins;
+      const history=getKitchenHistory(sundayAssignments,weeks,week,pool);
+      u[week]=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs,history);
+    }
     setSundayAssignments(u);saveSunA(u);
   }
-  function toggleBothGroups(week){const u=JSON.parse(JSON.stringify(sundayAssignments));if(u[week]){u[week].bothGroups=!u[week].bothGroups;const r=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs);u[week]=r;}setSundayAssignments(u);saveSunA(u);}
   function overrideSundayJob(week,jobId,names){const u=JSON.parse(JSON.stringify(sundayAssignments));if(u[week]?.jobs?.[jobId])u[week].jobs[jobId].assigned=names;setSundayAssignments(u);saveSunA(u);}
-  function reshuffleSundayWeek(week){const u=JSON.parse(JSON.stringify(sundayAssignments));if(u[week])u[week]=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs);setSundayAssignments(u);saveSunA(u);}
+  function reshuffleSundayWeek(week){
+    const u=JSON.parse(JSON.stringify(sundayAssignments));
+    if(u[week]){
+      const pool=u[week].bothGroups?[...evenPins,...oddPins]:u[week].group==="even"?evenPins:oddPins;
+      const history=getKitchenHistory(sundayAssignments,weeks,week,pool);
+      u[week]=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs,history);
+    }
+    setSundayAssignments(u);saveSunA(u);
+  }
 
   // Makeup functions — adds someone to next week's Sunday cleaning
   function addMakeup(name){
@@ -607,17 +641,52 @@ export default function HouseJobsApp(){
     setSundayAssignments(u);saveSunA(u);
   }
   // Project actions
-  function claimProject(week,projIdx,name){
-    const u=JSON.parse(JSON.stringify(weeklyProjects));if(u[week]?.projects?.[projIdx]&&u[week].projects[projIdx].status==="available"){u[week].projects[projIdx].status="claimed";u[week].projects[projIdx].claimedBy=name;}setWeeklyProjects(u);saveProjA(u);
+  async function claimProject(week,projIdx,name){
+    if(!name?.trim()||!fbConnected){
+      const u=JSON.parse(JSON.stringify(weeklyProjects));
+      if(u[week]?.projects?.[projIdx]?.status==="available"){
+        u[week].projects[projIdx]={...u[week].projects[projIdx],status:"claimed",claimedBy:name};
+        setWeeklyProjects(u);saveProjA(u);
+      }
+      return;
+    }
+    const path=`weeklyProjects/${sanitizeKey(week)}/projects/${projIdx}`;
+    const result=await fbTransaction(path,current=>{
+      if(!current||current.status!=="available")return;
+      return {...current,status:"claimed",claimedBy:name};
+    });
+    if(result?.committed&&result.snapshot){
+      const claimed=result.snapshot.val();
+      setWeeklyProjects(prev=>{
+        const u=JSON.parse(JSON.stringify(prev));
+        if(u[week]?.projects?.[projIdx])u[week].projects[projIdx]=claimed;
+        return u;
+      });
+    }
   }
   function completeProject(week,projIdx){
-    const u=JSON.parse(JSON.stringify(weeklyProjects));if(u[week]?.projects?.[projIdx]&&u[week].projects[projIdx].status==="claimed"){u[week].projects[projIdx].status="done";u[week].projects[projIdx].completedBy=u[week].projects[projIdx].claimedBy;}setWeeklyProjects(u);saveProjA(u);
+    const u=JSON.parse(JSON.stringify(weeklyProjects));
+    if(u[week]?.projects?.[projIdx]?.status==="claimed"){
+      u[week].projects[projIdx]={...u[week].projects[projIdx],status:"done",completedBy:u[week].projects[projIdx].claimedBy};
+      setWeeklyProjects(u);
+      if(fbConnected)saveProjectItem(week,projIdx,u[week].projects[projIdx]);else saveProjA(u);
+    }
   }
   function verifyProject(week,projIdx){
-    const u=JSON.parse(JSON.stringify(weeklyProjects));if(u[week]?.projects?.[projIdx])u[week].projects[projIdx].status="verified";setWeeklyProjects(u);saveProjA(u);
+    const u=JSON.parse(JSON.stringify(weeklyProjects));
+    if(u[week]?.projects?.[projIdx]){
+      u[week].projects[projIdx]={...u[week].projects[projIdx],status:"verified"};
+      setWeeklyProjects(u);
+      if(fbConnected)saveProjectItem(week,projIdx,u[week].projects[projIdx]);else saveProjA(u);
+    }
   }
   function unclaimProject(week,projIdx){
-    const u=JSON.parse(JSON.stringify(weeklyProjects));if(u[week]?.projects?.[projIdx]){u[week].projects[projIdx].status="available";u[week].projects[projIdx].claimedBy=null;u[week].projects[projIdx].completedBy=null;}setWeeklyProjects(u);saveProjA(u);
+    const u=JSON.parse(JSON.stringify(weeklyProjects));
+    if(u[week]?.projects?.[projIdx]){
+      u[week].projects[projIdx]={...u[week].projects[projIdx],status:"available",claimedBy:null,completedBy:null};
+      setWeeklyProjects(u);
+      if(fbConnected)saveProjectItem(week,projIdx,u[week].projects[projIdx]);else saveProjA(u);
+    }
   }
 
   async function regenerate(){
@@ -937,7 +1006,8 @@ export default function HouseJobsApp(){
             <div><h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4}}>Sunday Cleaning</h2><GroupBadge group={sunWeekData.group} bothGroups={sunWeekData.bothGroups}/></div>
             {adminUnlocked&&<div style={{display:"flex",gap:6}}><SmallBtn onClick={()=>toggleBothGroups(currentWeek)} color="#F59E0B">{sunWeekData.bothGroups?"Split":"Both"}</SmallBtn><SmallBtn onClick={()=>reshuffleSundayWeek(currentWeek)} color="#8B5CF6">Shuffle</SmallBtn></div>}
           </div>
-          <div style={{fontSize:12,color:totalAssigned>=totalPool?"#D4A843":"#F59E0B",marginBottom:totalAssigned>=totalPool?16:8,fontFamily:"'Space Mono',monospace",fontWeight:600}}>{totalAssigned}/{totalPool} brothers assigned</div>
+          <div style={{fontSize:12,color:totalAssigned>=totalPool?"#D4A843":"#F59E0B",marginBottom:8,fontFamily:"'Space Mono',monospace",fontWeight:600}}>{totalAssigned}/{totalPool} brothers assigned</div>
+          {sunWeekData.jobs?.sun_kitchen&&<div style={{background:"#F59E0B10",border:"1px solid #F59E0B30",borderRadius:8,padding:"8px 12px",marginBottom:16,fontSize:12,color:"#FCD34D",lineHeight:1.5}}>🍳 Kitchen rotates through the pin roster. Nobody is assigned to kitchen again until the remaining roster has had a turn.</div>}
           {(()=>{
             const fullPool=[...pool,...makeups];
             const unassignedSun=fullPool.filter(n=>!assignedSet.has(n));
@@ -1429,3 +1499,4 @@ export default function HouseJobsApp(){
     </div>
   );
 }
+
