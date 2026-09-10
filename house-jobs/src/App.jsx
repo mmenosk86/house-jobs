@@ -284,6 +284,71 @@ function generateWeeklyProjects(projects, weeks) {
   return wp;
 }
 
+const DEFAULT_HOUSE_SETTINGS={
+  weeklyDueDay:5,weeklyDueTime:"18:00",
+  sundayDueDay:0,sundayDueTime:"15:00",
+  kitchenRotationEnabled:true
+};
+const ISSUE_CATEGORIES=["Maintenance","Cleaning","Supplies","Network","Safety","Other"];
+const ISSUE_PRIORITIES=["low","medium","high","urgent"];
+
+function parseWeekStart(label,year=new Date().getFullYear()){
+  const first=String(label||"").split("-")[0]?.trim().split("/");
+  if(first?.length!==2)return null;
+  const d=new Date(year,Number(first[0])-1,Number(first[1]),12);
+  return Number.isNaN(d.getTime())?null:d;
+}
+function getDueDate(label,type,settings){
+  const start=parseWeekStart(label); if(!start)return null;
+  const targetDay=type==="sunday"?Number(settings.sundayDueDay):Number(settings.weeklyDueDay);
+  const time=type==="sunday"?settings.sundayDueTime:settings.weeklyDueTime;
+  const due=new Date(start);
+  due.setDate(start.getDate()+((targetDay-start.getDay()+7)%7));
+  const[h,m]=String(time||"18:00").split(":").map(Number);
+  due.setHours(h||0,m||0,0,0);
+  return due;
+}
+function formatDue(date){
+  if(!date)return"";
+  return date.toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"});
+}
+function generateWeekLabels(startValue,endValue,excludedText=""){
+  const start=new Date(startValue+"T12:00:00"),end=new Date(endValue+"T12:00:00");
+  if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime())||start>end)return[];
+  const excluded=new Set(excludedText.split(",").map(x=>x.trim()).filter(Boolean));
+  const labels=[]; const cursor=new Date(start);
+  while(cursor<=end){
+    const weekEnd=new Date(cursor);weekEnd.setDate(cursor.getDate()+6);
+    const days=Array.from({length:7},(_,i)=>{const d=new Date(cursor);d.setDate(cursor.getDate()+i);return d.toISOString().slice(0,10);});
+    if(!days.some(d=>excluded.has(d))){
+      labels.push(`${cursor.getMonth()+1}/${cursor.getDate()}-${weekEnd.getMonth()+1}/${weekEnd.getDate()}`);
+    }
+    cursor.setDate(cursor.getDate()+7);
+  }
+  return labels;
+}
+function compressImage(file){
+  return new Promise((resolve,reject)=>{
+    if(!file){resolve("");return;}
+    if(file.size>8*1024*1024){reject(new Error("Photo must be under 8 MB"));return;}
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error("Could not read photo"));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error("Could not process photo"));
+      img.onload=()=>{
+        const scale=Math.min(1,1024/Math.max(img.width,img.height));
+        const canvas=document.createElement("canvas");
+        canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
+        canvas.getContext("2d").drawImage(img,0,0,canvas.width,canvas.height);
+        resolve(canvas.toDataURL("image/jpeg",.72));
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 async function hashPassword(pw){const e=new TextEncoder().encode(pw);const b=await crypto.subtle.digest("SHA-256",e);return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join("");}
 
 // Local fallback used when Firebase is unavailable.
@@ -342,6 +407,22 @@ export default function HouseJobsApp(){
   // Announcements
   const[announcements,setAnnouncements]=useState([]);
   const[newAnnouncement,setNewAnnouncement]=useState("");
+  // House manager features
+  const[houseSettings,setHouseSettings]=useState(DEFAULT_HOUSE_SETTINGS);
+  const[houseIssues,setHouseIssues]=useState([]);
+  const[archives,setArchives]=useState({});
+  const[completionDraft,setCompletionDraft]=useState(null);
+  const[proofNote,setProofNote]=useState("");
+  const[proofPhoto,setProofPhoto]=useState("");
+  const[proofPhotoBusy,setProofPhotoBusy]=useState(false);
+  const[supplyStatus,setSupplyStatus]=useState("ok");
+  const[supplyNote,setSupplyNote]=useState("");
+  const[issueForm,setIssueForm]=useState({category:"Maintenance",priority:"medium",location:"",description:"",photo:""});
+  const[issuePhotoBusy,setIssuePhotoBusy]=useState(false);
+  const[semesterStart,setSemesterStart]=useState("");
+  const[semesterEnd,setSemesterEnd]=useState("");
+  const[semesterExcluded,setSemesterExcluded]=useState("");
+  const[archiveBusy,setArchiveBusy]=useState(false);
   // Setup
   const[adminUnlocked,setAdminUnlocked]=useState(false);
   const[pwInput,setPwInput]=useState("");
@@ -405,7 +486,11 @@ export default function HouseJobsApp(){
   useEffect(()=>{(async()=>{
     const connected=await initFirebase(); setFbConnected(connected);
     if(connected){
-      const cfg=await fbGet("config"),asg=await fbGet("assignments"),sunCfg=await fbGet("sundayConfig"),sunAsg=await fbGet("sundayAssignments"),projCfg=await fbGet("projectsConfig"),projAsg=await fbGet("weeklyProjects"),ann=await fbGet("announcements");
+      const[cfg,asg,sunCfg,sunAsg,projCfg,projAsg,ann,settings,issues,archiveData]=await Promise.all([
+        fbGet("config"),fbGet("assignments"),fbGet("sundayConfig"),fbGet("sundayAssignments"),
+        fbGet("projectsConfig"),fbGet("weeklyProjects"),fbGet("announcements"),
+        fbGet("houseSettings"),fbGet("houseIssues"),fbGet("archives")
+      ]);
       const w=cfg?.weeks||DEFAULT_WEEKS;
       if(cfg){setBrothers(cfg.brothers||DEFAULT_BROTHERS);setJobs(cfg.jobs||DEFAULT_JOBS);setWeeks(w);setSemesterName(cfg.semesterName||"Fall 2026");}
       if(asg)setAssignments(desanitizeObjKeys(asg,w));else{const a=generateAssignments(cfg?.brothers||DEFAULT_BROTHERS,cfg?.jobs||DEFAULT_JOBS,w);setAssignments(a);await fbSet("assignments",sanitizeObjKeys(a));}
@@ -414,6 +499,9 @@ export default function HouseJobsApp(){
       if(projCfg)setProjects(projCfg);
       if(projAsg)setWeeklyProjects(desanitizeObjKeys(projAsg,w));else{const wp=generateWeeklyProjects(projCfg||DEFAULT_PROJECTS,w);setWeeklyProjects(wp);await fbSet("weeklyProjects",sanitizeObjKeys(wp));}
       if(ann)setAnnouncements(Array.isArray(ann)?ann:[]);
+      if(settings)setHouseSettings({...DEFAULT_HOUSE_SETTINGS,...settings});
+      if(issues)setHouseIssues(Array.isArray(issues)?issues:Object.values(issues));
+      if(archiveData)setArchives(archiveData);
       fbOnValue("assignments",d=>{if(skipSync.current){skipSync.current=false;return;}if(d)setAssignments(desanitizeObjKeys(d,w));});
       fbOnValue("config",d=>{if(d){setBrothers(d.brothers||DEFAULT_BROTHERS);setJobs(d.jobs||DEFAULT_JOBS);setWeeks(d.weeks||DEFAULT_WEEKS);setSemesterName(d.semesterName||"Fall 2026");}});
       fbOnValue("sundayAssignments",d=>{if(skipSunSync.current){skipSunSync.current=false;return;}if(d)setSundayAssignments(desanitizeObjKeys(d,w));});
@@ -421,6 +509,9 @@ export default function HouseJobsApp(){
       fbOnValue("weeklyProjects",d=>{if(skipProjSync.current){skipProjSync.current=false;return;}if(d)setWeeklyProjects(desanitizeObjKeys(d,w));});
       fbOnValue("projectsConfig",d=>{if(d)setProjects(d);});
       fbOnValue("announcements",d=>{if(d)setAnnouncements(Array.isArray(d)?d:[]);});
+      fbOnValue("houseSettings",d=>{if(d)setHouseSettings({...DEFAULT_HOUSE_SETTINGS,...d});});
+      fbOnValue("houseIssues",d=>setHouseIssues(d?(Array.isArray(d)?d:Object.values(d)):[]));
+      fbOnValue("archives",d=>setArchives(d||{}));
       // Auto-detect week
       setCurrentWeekIdx(detectCurrentWeek(w));
     }else{
@@ -432,6 +523,10 @@ export default function HouseJobsApp(){
         if(sunAsg?.value)setSundayAssignments(JSON.parse(sunAsg.value));else setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS));
         const wp=await localStoreGet("housejobs:weeklyProjects");
         if(wp?.value)setWeeklyProjects(JSON.parse(wp.value));else setWeeklyProjects(generateWeeklyProjects(DEFAULT_PROJECTS,DEFAULT_WEEKS));
+        const settings=await localStoreGet("housejobs:houseSettings"),issues=await localStoreGet("housejobs:houseIssues"),archiveData=await localStoreGet("housejobs:archives");
+        if(settings?.value)setHouseSettings({...DEFAULT_HOUSE_SETTINGS,...JSON.parse(settings.value)});
+        if(issues?.value)setHouseIssues(JSON.parse(issues.value));
+        if(archiveData?.value)setArchives(JSON.parse(archiveData.value));
         setCurrentWeekIdx(detectCurrentWeek(DEFAULT_WEEKS));
       }catch{setAssignments(generateAssignments(DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_WEEKS));setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS));setWeeklyProjects(generateWeeklyProjects(DEFAULT_PROJECTS,DEFAULT_WEEKS));}
     }
@@ -457,6 +552,86 @@ export default function HouseJobsApp(){
   const saveProjectItem=useCallback(async(week,projIdx,project)=>{
     if(fbConnected){try{await fbSet(`weeklyProjects/${sanitizeKey(week)}/projects/${projIdx}`,project);}catch(e){console.error("save project error:",e);}}
   },[fbConnected]);
+  const saveHouseSettings=useCallback(async next=>{
+    setHouseSettings(next);
+    if(fbConnected)await fbSet("houseSettings",next);else await localStoreSet("housejobs:houseSettings",JSON.stringify(next));
+  },[fbConnected]);
+  const saveIssue=useCallback(async issue=>{
+    setHouseIssues(prev=>[issue,...prev.filter(x=>String(x.id)!==String(issue.id))]);
+    if(fbConnected)await fbSet(`houseIssues/${issue.id}`,issue);
+    else{
+      const current=await localStoreGet("housejobs:houseIssues");
+      const list=current?.value?JSON.parse(current.value):[];
+      await localStoreSet("housejobs:houseIssues",JSON.stringify([issue,...list.filter(x=>String(x.id)!==String(issue.id))]));
+    }
+  },[fbConnected]);
+  const removeIssue=useCallback(async id=>{
+    setHouseIssues(prev=>prev.filter(x=>String(x.id)!==String(id)));
+    if(fbConnected)await fbSet(`houseIssues/${id}`,null);
+    else await localStoreSet("housejobs:houseIssues",JSON.stringify(houseIssues.filter(x=>String(x.id)!==String(id))));
+  },[fbConnected,houseIssues]);
+
+  function openCompletion(type,week,id,index,name){
+    setCompletionDraft({type,week,id,index,name});
+    setProofNote("");setProofPhoto("");setSupplyStatus("ok");setSupplyNote("");
+  }
+  async function handleProofPhoto(file){
+    setProofPhotoBusy(true);
+    try{setProofPhoto(await compressImage(file));}catch(e){alert(e.message);}
+    setProofPhotoBusy(false);
+  }
+  async function submitCompletion(){
+    if(!completionDraft)return;
+    const proof={note:proofNote.trim(),photo:proofPhoto||"",supplyStatus,supplyNote:supplyNote.trim(),submittedBy:myName||"Unknown",submittedAt:new Date().toISOString()};
+    const{type,week,id,index}=completionDraft;
+    if(type==="weekly"){
+      const u=JSON.parse(JSON.stringify(assignments));
+      if(u[week]?.[id]){u[week][id]={...u[week][id],status:"done",proof};setAssignments(u);if(fbConnected)await fbSet(`assignments/${sanitizeKey(week)}/${sanitizeKey(id)}`,u[week][id]);else await saveA(u);}
+    }else if(type==="sunday"){
+      const u=JSON.parse(JSON.stringify(sundayAssignments));
+      if(u[week]?.jobs?.[id]){u[week].jobs[id]={...u[week].jobs[id],status:"done",proof};setSundayAssignments(u);if(fbConnected)await fbSet(`sundayAssignments/${sanitizeKey(week)}/jobs/${sanitizeKey(id)}`,u[week].jobs[id]);else await saveSunA(u);}
+    }else if(type==="project"){
+      const u=JSON.parse(JSON.stringify(weeklyProjects));
+      if(u[week]?.projects?.[index]){u[week].projects[index]={...u[week].projects[index],status:"done",completedBy:u[week].projects[index].claimedBy||myName,proof};setWeeklyProjects(u);if(fbConnected)await saveProjectItem(week,index,u[week].projects[index]);else await saveProjA(u);}
+    }
+    setCompletionDraft(null);
+  }
+  async function reviewItem(item,approved){
+    if(item.type==="weekly"){
+      const u=JSON.parse(JSON.stringify(assignments)),entry=u[item.week]?.[item.id];if(!entry)return;
+      u[item.week][item.id]={...entry,status:approved?"verified":"pending",rejectionNote:approved?"":"Needs more work"};
+      setAssignments(u);if(fbConnected)await fbSet(`assignments/${sanitizeKey(item.week)}/${sanitizeKey(item.id)}`,u[item.week][item.id]);else await saveA(u);
+    }else if(item.type==="sunday"){
+      const u=JSON.parse(JSON.stringify(sundayAssignments)),entry=u[item.week]?.jobs?.[item.id];if(!entry)return;
+      u[item.week].jobs[item.id]={...entry,status:approved?"verified":"pending",rejectionNote:approved?"":"Needs more work"};
+      setSundayAssignments(u);if(fbConnected)await fbSet(`sundayAssignments/${sanitizeKey(item.week)}/jobs/${sanitizeKey(item.id)}`,u[item.week].jobs[item.id]);else await saveSunA(u);
+    }else{
+      const u=JSON.parse(JSON.stringify(weeklyProjects)),entry=u[item.week]?.projects?.[item.index];if(!entry)return;
+      u[item.week].projects[item.index]={...entry,status:approved?"verified":"claimed",rejectionNote:approved?"":"Needs more work"};
+      setWeeklyProjects(u);if(fbConnected)await saveProjectItem(item.week,item.index,u[item.week].projects[item.index]);else await saveProjA(u);
+    }
+  }
+  async function archiveSemester(){
+    setArchiveBusy(true);
+    const id=String(Date.now());
+    const snapshot={id,name:semesterName,archivedAt:new Date().toISOString(),config:{brothers,jobs,weeks,semesterName},sundayConfig:{evenPins,oddPins,sundayJobs},houseSettings,assignments,sundayAssignments,weeklyProjects,houseIssues};
+    if(fbConnected)await fbSet(`archives/${id}`,snapshot);
+    else{const next={...archives,[id]:snapshot};setArchives(next);await localStoreSet("housejobs:archives",JSON.stringify(next));}
+    setArchives(prev=>({...prev,[id]:snapshot}));setArchiveBusy(false);
+  }
+  function downloadArchive(archive){
+    const blob=new Blob([JSON.stringify(archive,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`${archive.name||"house-jobs"}-archive.json`;a.click();URL.revokeObjectURL(url);
+  }
+  function submitIssue(){
+    if(!issueForm.description.trim())return;
+    const issue={...issueForm,id:Date.now(),reporter:myName||"Anonymous",status:"open",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+    saveIssue(issue);setIssueForm({category:"Maintenance",priority:"medium",location:"",description:"",photo:""});
+  }
+  function updateIssue(id,changes){
+    const issue=houseIssues.find(x=>String(x.id)===String(id));if(!issue)return;
+    saveIssue({...issue,...changes,updatedAt:new Date().toISOString()});
+  }
 
   function addAnnouncement(text){
     if(!text.trim())return;
@@ -487,6 +662,7 @@ export default function HouseJobsApp(){
     const u=JSON.parse(JSON.stringify(assignments));
     if(!u[week]?.[jobId])return;
     const c=u[week][jobId].status;
+    if(!isAdmin&&c==="pending"){openCompletion("weekly",week,jobId,null,jobs.find(j=>j.id===jobId)?.name||"Weekly job");return;}
     const next=isAdmin?STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length]:c==="pending"?"done":c==="done"?"pending":c;
     if(next===c)return;
     u[week][jobId].status=next;
@@ -596,6 +772,7 @@ export default function HouseJobsApp(){
     const u=JSON.parse(JSON.stringify(sundayAssignments));
     if(!u[week]?.jobs?.[jobId])return;
     const c=u[week].jobs[jobId].status;
+    if(!isAdmin&&c==="pending"){openCompletion("sunday",week,jobId,null,sundayJobs.find(j=>j.id===jobId)?.name||"Sunday job");return;}
     const next=isAdmin?STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length]:c==="pending"?"done":c==="done"?"pending":c;
     if(next===c)return;
     u[week].jobs[jobId].status=next;
@@ -667,9 +844,7 @@ export default function HouseJobsApp(){
   function completeProject(week,projIdx){
     const u=JSON.parse(JSON.stringify(weeklyProjects));
     if(u[week]?.projects?.[projIdx]?.status==="claimed"){
-      u[week].projects[projIdx]={...u[week].projects[projIdx],status:"done",completedBy:u[week].projects[projIdx].claimedBy};
-      setWeeklyProjects(u);
-      if(fbConnected)saveProjectItem(week,projIdx,u[week].projects[projIdx]);else saveProjA(u);
+      openCompletion("project",week,u[week].projects[projIdx].id,projIdx,u[week].projects[projIdx].name||"House project");
     }
   }
   function verifyProject(week,projIdx){
@@ -730,6 +905,36 @@ export default function HouseJobsApp(){
 
   const weekStats=useMemo(()=>{const t=Object.keys(weekData).length;const d=Object.values(weekData).filter(j=>j?.status==="done"||j?.status==="verified").length;const m=Object.values(weekData).filter(j=>j?.status==="missed").length;return{total:t,done:d,missed:m,pending:t-d-m};},[weekData]);
   const completionPct=weekStats.total>0?Math.round((weekStats.done/weekStats.total)*100):0;
+  const verificationQueue=useMemo(()=>{
+    const list=[];
+    Object.entries(assignments).forEach(([week,data])=>Object.entries(data||{}).forEach(([id,entry])=>{if(entry?.status==="done")list.push({type:"weekly",week,id,name:jobs.find(j=>j.id===id)?.name||id,entry});}));
+    Object.entries(sundayAssignments).forEach(([week,data])=>Object.entries(data?.jobs||{}).forEach(([id,entry])=>{if(entry?.status==="done")list.push({type:"sunday",week,id,name:sundayJobs.find(j=>j.id===id)?.name||id,entry});}));
+    Object.entries(weeklyProjects).forEach(([week,data])=>(data?.projects||[]).forEach((entry,index)=>{if(entry?.status==="done")list.push({type:"project",week,index,id:entry.id,name:entry.name,entry});}));
+    return list.sort((a,b)=>String(b.entry?.proof?.submittedAt||"").localeCompare(String(a.entry?.proof?.submittedAt||"")));
+  },[assignments,sundayAssignments,weeklyProjects,jobs,sundayJobs]);
+  const supplyReports=useMemo(()=>verificationQueue.filter(x=>x.entry?.proof?.supplyStatus&&x.entry.proof.supplyStatus!=="ok"),[verificationQueue]);
+  const openIssues=useMemo(()=>{
+    const rank={urgent:4,high:3,medium:2,low:1};
+    return houseIssues.filter(x=>x.status!=="closed").sort((a,b)=>(rank[b.priority]||0)-(rank[a.priority]||0)||String(b.createdAt).localeCompare(String(a.createdAt)));
+  },[houseIssues]);
+  const overdueItems=useMemo(()=>{
+    const now=Date.now(),list=[];
+    Object.entries(assignments).forEach(([week,data])=>{const due=getDueDate(week,"weekly",houseSettings);if(due&&due.getTime()<now)Object.entries(data||{}).forEach(([id,entry])=>{if(entry?.status==="pending")list.push({type:"weekly",week,id,name:jobs.find(j=>j.id===id)?.name||id,assigned:entry.assigned||[],due});});});
+    Object.entries(sundayAssignments).forEach(([week,data])=>{const due=getDueDate(week,"sunday",houseSettings);if(due&&due.getTime()<now)Object.entries(data?.jobs||{}).forEach(([id,entry])=>{if(entry?.status==="pending")list.push({type:"sunday",week,id,name:sundayJobs.find(j=>j.id===id)?.name||id,assigned:entry.assigned||[],due});});});
+    return list.sort((a,b)=>a.due-b.due);
+  },[assignments,sundayAssignments,jobs,sundayJobs,houseSettings]);
+  const kitchenStats=useMemo(()=>{
+    const all=[...new Set([...evenPins,...oddPins])],counts={};
+    all.forEach(n=>{counts[n]=0;});
+    Object.values(sundayAssignments).forEach(w=>{(w?.jobs?.sun_kitchen?.assigned||[]).forEach(n=>{counts[n]=(counts[n]||0)+1;});});
+    return{all,counts,served:all.filter(n=>(counts[n]||0)>0),waiting:all.filter(n=>(counts[n]||0)===0)};
+  },[evenPins,oddPins,sundayAssignments]);
+  const fairnessRows=useMemo(()=>brotherNames.map(name=>{
+    let sunday=0,kitchen=0,bathrooms=0;
+    Object.values(sundayAssignments).forEach(w=>Object.entries(w?.jobs||{}).forEach(([id,e])=>{if(e?.assigned?.includes(name)){sunday++;if(id==="sun_kitchen")kitchen++;if(id.includes("bath"))bathrooms++;}}));
+    Object.values(assignments).forEach(w=>Object.entries(w||{}).forEach(([id,e])=>{if(e?.assigned?.includes(name)&&id.includes("bath"))bathrooms++;}));
+    return{name,total:stats[name]?.total||0,sunday,kitchen,bathrooms,missed:stats[name]?.missed||0,projectPoints:projectStats[name]?.points||0};
+  }).sort((a,b)=>(b.total+b.sunday)-(a.total+a.sunday)),[brotherNames,assignments,sundayAssignments,stats,projectStats]);
 
   if(loading)return<div style={{fontFamily:"'DM Sans',sans-serif",background:"#140E2A",color:"#8B7BAA",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}><div style={{width:28,height:28,border:"3px solid #3D2A6E",borderTop:"3px solid #D4A843",borderRadius:"50%",animation:"spin .8s linear infinite"}}/><span>Connecting...</span><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
 
@@ -740,13 +945,28 @@ export default function HouseJobsApp(){
 .job-grid{display:flex;flex-direction:column;gap:8px}
 .roster-grid{display:flex;flex-direction:column;gap:6px}
 .board-list{display:flex;flex-direction:column;gap:6px}
+.manager-grid,.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hm-card{background:#261850;border:1px solid #3D2A6E;border-radius:12px;padding:14px;min-width:0}
+.scroll-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x proximity}
+.scroll-row>*{scroll-snap-align:start}
+.nav-tab{min-width:64px!important}
+.proof-modal{position:fixed;inset:0;z-index:200;background:#080512CC;display:flex;align-items:flex-end;justify-content:center;padding:14px}
+.proof-sheet{width:min(100%,500px);max-height:92vh;overflow-y:auto;background:#261850;border:1px solid #D4A84355;border-radius:18px 18px 12px 12px;padding:18px;box-shadow:0 -16px 45px #0008}
 .header-inner{max-width:100%}
+@media(max-width:767px){
+  .app-shell{padding-bottom:24px}
+  .manager-grid,.stat-grid{grid-template-columns:1fr 1fr}
+  .hm-wide{grid-column:1/-1}
+  input,textarea,select{font-size:16px!important}
+}
 @media(min-width:768px){
   .app-shell{max-width:900px;padding:0 20px}
   .job-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .roster-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .board-list{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .header-inner{max-width:900px;margin:0 auto}
+  .proof-modal{align-items:center}
+  .proof-sheet{border-radius:18px}
 }
 @media(min-width:1200px){
   .app-shell{max-width:1100px}
@@ -772,9 +992,9 @@ export default function HouseJobsApp(){
       </div>
 
       {/* NAV */}
-      <div style={{display:"flex",gap:1,padding:"12px 12px 0",borderBottom:"1px solid #3D2A6E",background:"#140E2A",overflowX:"auto"}}>
-        {[{key:"me",label:"Me"},{key:"dashboard",label:"Weekly"},{key:"sunday",label:"Sunday"},{key:"projects",label:"Projects"},{key:"roster",label:"Roster"},{key:"leaderboard",label:"Board"},{key:"setup",label:"⚙"}].map(tab=>
-          <button key={tab.key} onClick={()=>{setView(tab.key);setSelectedBrother(null);}} style={{flex:1,padding:"10px 0 12px",background:"none",border:"none",minWidth:0,color:view===tab.key?"#F8FAFC":"#8B7BAA",fontSize:11,fontWeight:view===tab.key?700:500,cursor:"pointer",fontFamily:"inherit",borderBottom:view===tab.key?`2px solid ${tab.key==="setup"?"#D4A843":tab.key==="me"?"#C41E3A":"#D4A843"}`:"2px solid transparent"}}>{tab.label}</button>
+      <div style={{display:"flex",gap:1,padding:"12px 12px 0",borderBottom:"1px solid #3D2A6E",background:"#140E2A",overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+        {[{key:"me",label:"Me"},{key:"dashboard",label:"Weekly"},{key:"sunday",label:"Sunday"},{key:"projects",label:"Projects"},{key:"issues",label:"Issues"},{key:"roster",label:"Roster"},{key:"leaderboard",label:"Board"},{key:"manager",label:"HM"},{key:"setup",label:"⚙"}].map(tab=>
+          <button className="nav-tab" key={tab.key} onClick={()=>{setView(tab.key);setSelectedBrother(null);}} style={{flex:1,padding:"10px 6px 12px",background:"none",border:"none",color:view===tab.key?"#F8FAFC":"#8B7BAA",fontSize:11,fontWeight:view===tab.key?700:500,cursor:"pointer",fontFamily:"inherit",borderBottom:view===tab.key?`2px solid ${tab.key==="setup"?"#D4A843":tab.key==="me"?"#C41E3A":"#D4A843"}`:"2px solid transparent"}}>{tab.label}</button>
         )}
       </div>
 
@@ -843,7 +1063,8 @@ export default function HouseJobsApp(){
             </div>}
 
             {/* My Weekly Jobs */}
-            <h3 style={{fontSize:13,fontWeight:700,color:"#D4A843",marginBottom:10,letterSpacing:"0.05em"}}>WEEKLY HOUSE JOBS</h3>
+            <h3 style={{fontSize:13,fontWeight:700,color:"#D4A843",marginBottom:4,letterSpacing:"0.05em"}}>WEEKLY HOUSE JOBS</h3>
+            <div style={{fontSize:11,color:"#64748B",marginBottom:10}}>Due {formatDue(getDueDate(currentWeek,"weekly",houseSettings))}</div>
             {(()=>{
               const myJobs=jobs.filter(j=>weekData[j.id]?.assigned?.includes(myName));
               return myJobs.length>0?<div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:20}}>
@@ -862,7 +1083,8 @@ export default function HouseJobsApp(){
             })()}
 
             {/* My Sunday Jobs */}
-            <h3 style={{fontSize:13,fontWeight:700,color:"#8B5CF6",marginBottom:10,letterSpacing:"0.05em"}}>SUNDAY CLEANING</h3>
+            <h3 style={{fontSize:13,fontWeight:700,color:"#8B5CF6",marginBottom:4,letterSpacing:"0.05em"}}>SUNDAY CLEANING</h3>
+            <div style={{fontSize:11,color:"#64748B",marginBottom:10}}>Due {formatDue(getDueDate(currentWeek,"sunday",houseSettings))}</div>
             {(()=>{
               const mySunJobs=sundayJobs.filter(j=>sunWeekData.jobs?.[j.id]?.assigned?.includes(myName));
               const isMakeup=(sunWeekData.makeups||[]).includes(myName);
@@ -1300,6 +1522,43 @@ export default function HouseJobsApp(){
           <button onClick={()=>{const wp=generateWeeklyProjects(projects,weeks);setWeeklyProjects(wp);saveProjA(wp);setView("projects");}} style={{marginTop:20,width:"100%",background:"linear-gradient(135deg,#EC4899,#DB2777)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔄 Reshuffle Projects Across Weeks</button>
         </div>}
 
+        {/* ══════ HOUSE ISSUES & SUPPLIES ══════ */}
+        {view==="issues"&&<div className="fu">
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+            <div><h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9"}}>House Issues</h2><p style={{fontSize:12,color:"#64748B",marginTop:3}}>Report damage, maintenance, cleaning, network, or missing supplies.</p></div>
+            <span style={{fontSize:11,color:"#F59E0B",background:"#F59E0B16",padding:"4px 8px",borderRadius:6}}>{openIssues.length} open</span>
+          </div>
+          <div className="hm-card" style={{marginBottom:16}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+              <select value={issueForm.category} onChange={e=>setIssueForm({...issueForm,category:e.target.value})} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 30px 10px 10px",fontFamily:"inherit"}}>{ISSUE_CATEGORIES.map(x=><option key={x}>{x}</option>)}</select>
+              <select value={issueForm.priority} onChange={e=>setIssueForm({...issueForm,priority:e.target.value})} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 30px 10px 10px",fontFamily:"inherit"}}>{ISSUE_PRIORITIES.map(x=><option key={x} value={x}>{x.toUpperCase()}</option>)}</select>
+            </div>
+            <Input value={issueForm.location} onChange={v=>setIssueForm({...issueForm,location:v})} placeholder="Location, e.g. 2nd floor bathroom" style={{marginBottom:8}}/>
+            <textarea value={issueForm.description} onChange={e=>setIssueForm({...issueForm,description:e.target.value})} placeholder={issueForm.category==="Supplies"?"What supply is low or missing?":"What is wrong?"} rows={3} style={{width:"100%",resize:"vertical",background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:8}}/>
+            {issueForm.photo&&<img src={issueForm.photo} alt="Issue preview" style={{width:"100%",maxHeight:180,objectFit:"cover",borderRadius:8,marginBottom:8}}/>}
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <label style={{background:"#8B5CF618",border:"1px solid #8B5CF650",color:"#A78BFA",borderRadius:6,padding:"7px 10px",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                {issuePhotoBusy?"Processing...":issueForm.photo?"Change photo":"Add photo"}
+                <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;setIssuePhotoBusy(true);try{const photo=await compressImage(file);setIssueForm(prev=>({...prev,photo}));}catch(err){alert(err.message);}setIssuePhotoBusy(false);}}/>
+              </label>
+              <div style={{flex:1}}/>
+              <button onClick={submitIssue} disabled={!issueForm.description.trim()||issuePhotoBusy} style={{background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#140E2A",borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:!issueForm.description.trim()?0.5:1}}>Submit report</button>
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {openIssues.length===0?<div className="hm-card" style={{textAlign:"center",color:"#64748B",fontSize:13}}>No open house issues.</div>:openIssues.map(issue=>{
+              const color=issue.priority==="urgent"?"#EF4444":issue.priority==="high"?"#F97316":issue.priority==="medium"?"#F59E0B":"#3B82F6";
+              return<div key={issue.id} className="hm-card" style={{borderColor:`${color}55`}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
+                  <div style={{minWidth:0}}><div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color,fontWeight:700}}>{issue.priority?.toUpperCase()}</span><span style={{fontSize:11,color:"#A78BFA"}}>{issue.category}</span>{issue.location&&<span style={{fontSize:11,color:"#64748B"}}>• {issue.location}</span>}</div><p style={{fontSize:14,color:"#F1F5F9",marginTop:6,lineHeight:1.45}}>{issue.description}</p><p style={{fontSize:10,color:"#64748B",marginTop:6}}>Reported by {issue.reporter} • {new Date(issue.createdAt).toLocaleDateString()}</p></div>
+                  {issue.photo&&<img src={issue.photo} alt="" style={{width:72,height:72,objectFit:"cover",borderRadius:8,flexShrink:0}}/>}
+                </div>
+                {adminUnlocked&&<div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}><SmallBtn onClick={()=>updateIssue(issue.id,{status:"in-progress"})} color="#3B82F6">In progress</SmallBtn><SmallBtn onClick={()=>updateIssue(issue.id,{status:"closed"})} color="#D4A843">Close</SmallBtn><SmallBtn onClick={()=>removeIssue(issue.id)} color="#EF4444">Delete</SmallBtn></div>}
+              </div>;
+            })}
+          </div>
+        </div>}
+
         {/* ══════ ROSTER ══════ */}
         {view==="roster"&&!selectedBrother&&<div className="fu">
           <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4}}>Full Roster</h2>
@@ -1361,6 +1620,70 @@ export default function HouseJobsApp(){
             <p style={{fontSize:12,color:"#64748B",lineHeight:1.6,marginBottom:12}}>Per Amendment 22: missed jobs = fines. 3+ misses flagged for Standards.</p>
             {brotherNames.filter(b=>(stats[b]?.missed||0)>0).length===0?<div style={{fontSize:13,color:"#D4A843",textAlign:"center",padding:10}}>No missed jobs yet!</div>
             :brotherNames.filter(b=>(stats[b]?.missed||0)>0).sort((a,b)=>(stats[b]?.missed||0)-(stats[a]?.missed||0)).map(b=><div key={b} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #3D2A6E"}}><span style={{fontSize:13,color:"#CBD5E1"}}>{b}</span><span style={{fontSize:12,fontWeight:700,fontFamily:"'Space Mono',monospace",color:(stats[b]?.missed||0)>=3?"#EF4444":"#F59E0B"}}>{stats[b]?.missed||0} miss{(stats[b]?.missed||0)!==1?"es":""}{(stats[b]?.missed||0)>=3&&" ⚠️"}</span></div>)}
+          </div>
+        </div>}
+
+        {/* ══════ HOUSE MANAGER DASHBOARD ══════ */}
+        {view==="manager"&&!adminUnlocked&&<div className="fu" style={{maxWidth:340,margin:"40px auto",textAlign:"center"}}>
+          <div style={{fontSize:34,marginBottom:12}}>🛠️</div><h2 style={{fontSize:18,color:"#F1F5F9",marginBottom:6}}>House Manager Dashboard</h2>
+          <p style={{fontSize:13,color:"#64748B",marginBottom:18}}>Unlock to review work and manage the house.</p>
+          <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="House manager password" style={{textAlign:"center",marginBottom:10}}/>
+          {pwError&&<p style={{fontSize:12,color:"#EF4444",marginBottom:10}}>Wrong password.</p>}
+          <button onClick={checkPassword} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#140E2A",borderRadius:10,padding:"13px",fontWeight:700,cursor:"pointer"}}>Unlock dashboard</button>
+        </div>}
+        {view==="manager"&&adminUnlocked&&<div className="fu">
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div><h2 style={{fontSize:19,fontWeight:700,color:"#F8FAFC"}}>House Manager</h2><p style={{fontSize:12,color:"#64748B",marginTop:2}}>Everything that needs your attention</p></div>
+            <button onClick={()=>{setAdminUnlocked(false);setPwInput("");}} style={{background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:7,padding:"6px 9px",fontSize:11,cursor:"pointer"}}>🔒 Lock</button>
+          </div>
+          <div className="stat-grid" style={{marginBottom:14}}>
+            {[{n:verificationQueue.length,l:"Awaiting review",c:"#D4A843"},{n:overdueItems.length,l:"Overdue",c:"#EF4444"},{n:openIssues.length,l:"Open issues",c:"#F59E0B"},{n:supplyReports.length,l:"Supply alerts",c:"#8B5CF6"}].map(x=><div key={x.l} className="hm-card" style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:700,color:x.c,fontFamily:"'Space Mono',monospace"}}>{x.n}</div><div style={{fontSize:11,color:"#94A3B8",marginTop:3}}>{x.l}</div></div>)}
+          </div>
+          <div className="scroll-row" style={{marginBottom:18}}>
+            {[["Sunday","sunday","#8B5CF6"],["House issues","issues","#F59E0B"],["Setup","setup","#D4A843"],["Archive","archive","#3B82F6"]].map(([label,target,color])=><button key={label} onClick={()=>target==="archive"?archiveSemester():setView(target)} disabled={target==="archive"&&archiveBusy} style={{minWidth:112,background:`${color}18`,border:`1px solid ${color}50`,color,borderRadius:9,padding:"10px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{target==="archive"&&archiveBusy?"Saving...":label}</button>)}
+          </div>
+
+          <h3 style={{fontSize:12,color:"#D4A843",letterSpacing:".08em",marginBottom:8}}>AWAITING VERIFICATION</h3>
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
+            {verificationQueue.length===0?<div className="hm-card" style={{fontSize:13,color:"#64748B",textAlign:"center"}}>Nothing waiting for review.</div>:verificationQueue.map((item,i)=><div key={`${item.type}-${item.week}-${item.id||i}`} className="hm-card">
+              <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                <div style={{flex:1,minWidth:0}}><div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color:item.type==="sunday"?"#A78BFA":item.type==="project"?"#EC4899":"#D4A843",fontWeight:700}}>{item.type.toUpperCase()}</span><span style={{fontSize:10,color:"#64748B"}}>{item.week}</span></div><div style={{fontSize:14,color:"#F1F5F9",fontWeight:600,marginTop:4}}>{item.name}</div><div style={{fontSize:11,color:"#94A3B8",marginTop:4}}>{item.entry?.proof?.submittedBy||item.entry?.completedBy||"Unknown"}{item.entry?.proof?.submittedAt&&` • ${new Date(item.entry.proof.submittedAt).toLocaleString()}`}</div>{item.entry?.proof?.note&&<p style={{fontSize:12,color:"#CBD5E1",marginTop:6,lineHeight:1.4}}>{item.entry.proof.note}</p>}{item.entry?.proof?.supplyStatus!=="ok"&&<p style={{fontSize:11,color:"#F59E0B",marginTop:5}}>Supply {item.entry.proof.supplyStatus}: {item.entry.proof.supplyNote||"No details"}</p>}</div>
+                {item.entry?.proof?.photo&&<img src={item.entry.proof.photo} alt="Completion proof" style={{width:76,height:76,objectFit:"cover",borderRadius:8,flexShrink:0}}/>}
+              </div>
+              <div style={{display:"flex",gap:8,marginTop:10}}><button onClick={()=>reviewItem(item,true)} style={{flex:1,background:"#D4A84320",border:"1px solid #D4A84360",color:"#D4A843",borderRadius:7,padding:"8px",fontWeight:700,cursor:"pointer"}}>Verify</button><button onClick={()=>reviewItem(item,false)} style={{flex:1,background:"#EF444418",border:"1px solid #EF444450",color:"#F87171",borderRadius:7,padding:"8px",fontWeight:700,cursor:"pointer"}}>Reject</button></div>
+            </div>)}
+          </div>
+
+          <div className="manager-grid">
+            <section className="hm-card hm-wide">
+              <h3 style={{fontSize:12,color:"#EF4444",letterSpacing:".08em",marginBottom:9}}>OVERDUE ({overdueItems.length})</h3>
+              {overdueItems.length===0?<p style={{fontSize:12,color:"#64748B"}}>Nothing overdue.</p>:overdueItems.slice(0,12).map(item=><div key={`${item.type}-${item.week}-${item.id}`} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 0",borderBottom:"1px solid #3D2A6E"}}><div><div style={{fontSize:12,color:"#E2E8F0"}}>{item.name}</div><div style={{fontSize:10,color:"#64748B"}}>{item.week} • {(item.assigned||[]).join(", ")}</div></div><span style={{fontSize:10,color:"#EF4444",whiteSpace:"nowrap"}}>{formatDue(item.due)}</span></div>)}
+            </section>
+            <section className="hm-card">
+              <h3 style={{fontSize:12,color:"#F59E0B",letterSpacing:".08em",marginBottom:8}}>OPEN ISSUES</h3>
+              {openIssues.length===0?<p style={{fontSize:12,color:"#64748B"}}>None</p>:openIssues.slice(0,5).map(x=><button key={x.id} onClick={()=>setView("issues")} style={{display:"block",width:"100%",background:"none",border:"none",borderBottom:"1px solid #3D2A6E",padding:"7px 0",textAlign:"left",color:"#CBD5E1",fontSize:12,cursor:"pointer"}}><span style={{color:x.priority==="urgent"?"#EF4444":"#F59E0B",fontSize:9,fontWeight:700}}>{x.priority?.toUpperCase()} </span>{x.description}</button>)}
+            </section>
+            <section className="hm-card">
+              <h3 style={{fontSize:12,color:"#8B5CF6",letterSpacing:".08em",marginBottom:8}}>SUPPLIES</h3>
+              {supplyReports.length===0?<p style={{fontSize:12,color:"#64748B"}}>No shortages reported.</p>:supplyReports.slice(0,5).map((x,i)=><div key={i} style={{fontSize:12,color:"#CBD5E1",padding:"6px 0",borderBottom:"1px solid #3D2A6E"}}><span style={{color:"#F59E0B"}}>{x.entry.proof.supplyStatus.toUpperCase()}</span> • {x.entry.proof.supplyNote||x.name}</div>)}
+            </section>
+            <section className="hm-card hm-wide">
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><h3 style={{fontSize:12,color:"#F59E0B",letterSpacing:".08em"}}>KITCHEN ROTATION</h3><span style={{fontSize:11,color:"#94A3B8"}}>{kitchenStats.served.length}/{kitchenStats.all.length} served</span></div>
+              <div style={{height:7,background:"#1A1040",borderRadius:5,overflow:"hidden",marginBottom:10}}><div style={{height:"100%",width:`${kitchenStats.all.length?Math.round(kitchenStats.served.length/kitchenStats.all.length*100):0}%`,background:"linear-gradient(90deg,#F59E0B,#D4A843)"}}/></div>
+              <div style={{fontSize:11,color:"#64748B",marginBottom:5}}>Still waiting:</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{kitchenStats.waiting.length?kitchenStats.waiting.map(n=><span key={n} style={{fontSize:10,color:"#CBD5E1",background:"#1A1040",borderRadius:5,padding:"3px 6px"}}>{n}</span>):<span style={{fontSize:11,color:"#D4A843"}}>Everyone has served — next cycle can begin.</span>}</div>
+            </section>
+            <section className="hm-card hm-wide">
+              <h3 style={{fontSize:12,color:"#3B82F6",letterSpacing:".08em",marginBottom:10}}>FAIRNESS</h3>
+              <div style={{overflowX:"auto"}}>{fairnessRows.map(row=><div key={row.name} style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,alignItems:"center",padding:"7px 0",borderBottom:"1px solid #3D2A6E",minWidth:350}}><span style={{fontSize:12,color:"#E2E8F0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</span><span title="Weekly" style={{fontSize:11,color:"#94A3B8",textAlign:"center"}}>{row.total}</span><span title="Sunday" style={{fontSize:11,color:"#A78BFA",textAlign:"center"}}>{row.sunday}</span><span title="Kitchen" style={{fontSize:11,color:"#F59E0B",textAlign:"center"}}>{row.kitchen}</span><span title="Bathrooms" style={{fontSize:11,color:"#06B6D4",textAlign:"center"}}>{row.bathrooms}</span><span title="Project points" style={{fontSize:11,color:"#EC4899",textAlign:"center"}}>{row.projectPoints}</span></div>)}</div>
+              <div style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,marginTop:7,minWidth:350,fontSize:9,color:"#64748B"}}><span></span><span>WK</span><span>SUN</span><span>KIT</span><span>BATH</span><span>PTS</span></div>
+            </section>
+            <section className="hm-card hm-wide">
+              <h3 style={{fontSize:12,color:"#94A3B8",letterSpacing:".08em",marginBottom:10}}>DEADLINES</h3>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <label style={{fontSize:11,color:"#94A3B8"}}>Weekly due<select value={houseSettings.weeklyDueDay} onChange={e=>saveHouseSettings({...houseSettings,weeklyDueDay:Number(e.target.value)})} style={{display:"block",width:"100%",marginTop:4,background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:7,padding:"8px"}}>{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input type="time" value={houseSettings.weeklyDueTime} onChange={e=>saveHouseSettings({...houseSettings,weeklyDueTime:e.target.value})} style={{display:"block",width:"100%",marginTop:5,background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:7,padding:"8px"}}/></label>
+                <label style={{fontSize:11,color:"#94A3B8"}}>Sunday due<select value={houseSettings.sundayDueDay} onChange={e=>saveHouseSettings({...houseSettings,sundayDueDay:Number(e.target.value)})} style={{display:"block",width:"100%",marginTop:4,background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:7,padding:"8px"}}>{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input type="time" value={houseSettings.sundayDueTime} onChange={e=>saveHouseSettings({...houseSettings,sundayDueTime:e.target.value})} style={{display:"block",width:"100%",marginTop:5,background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:7,padding:"8px"}}/></label>
+              </div>
+            </section>
           </div>
         </div>}
 
@@ -1488,10 +1811,39 @@ export default function HouseJobsApp(){
               </div>;})}
             </div>
           </div>}
-          {setupTab==="weeks"&&<div><div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center"}}><Input value={editWeekStart} onChange={setEditWeekStart} placeholder="Start" style={{flex:1}}/><span style={{color:"#64748B"}}>–</span><Input value={editWeekEnd} onChange={setEditWeekEnd} placeholder="End" style={{flex:1}}/><SmallBtn onClick={()=>{if(editWeekStart.trim()&&editWeekEnd.trim()){setWeeks([...weeks,`${editWeekStart.trim()}-${editWeekEnd.trim()}`]);setEditWeekStart("");setEditWeekEnd("");}}}>+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{weeks.map((w,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:i===currentWeekIdx?"#D4A84318":"#261850",borderRadius:8,padding:"8px 12px",border:`1px solid ${i===currentWeekIdx?"#D4A843":"#3D2A6E"}`}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:11,color:"#64748B",fontFamily:"'Space Mono',monospace",width:24}}>{i+1}</span><span style={{fontSize:13,color:"#CBD5E1",fontFamily:"'Space Mono',monospace"}}>{w}</span></div><button onClick={()=>setWeeks(weeks.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
+          {setupTab==="weeks"&&<div>
+            <div className="hm-card" style={{marginBottom:14}}>
+              <h3 style={{fontSize:13,color:"#D4A843",marginBottom:5}}>Automatic semester setup</h3>
+              <p style={{fontSize:11,color:"#64748B",lineHeight:1.5,marginBottom:10}}>Choose the first Monday and last day. Add any date during a break week to skip that entire week.</p>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                <label style={{fontSize:11,color:"#94A3B8"}}>First week<Input type="date" value={semesterStart} onChange={setSemesterStart} style={{marginTop:4,padding:"8px"}}/></label>
+                <label style={{fontSize:11,color:"#94A3B8"}}>Last day<Input type="date" value={semesterEnd} onChange={setSemesterEnd} style={{marginTop:4,padding:"8px"}}/></label>
+              </div>
+              <Input value={semesterExcluded} onChange={setSemesterExcluded} placeholder="Break dates: 2027-03-15, 2027-04-02" style={{marginBottom:8}}/>
+              <button onClick={()=>{const generated=generateWeekLabels(semesterStart,semesterEnd,semesterExcluded);if(!generated.length){alert("Choose a valid start and end date.");return;}setWeeks(generated);}} style={{width:"100%",background:"#D4A84320",border:"1px solid #D4A84360",color:"#D4A843",borderRadius:8,padding:"10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Generate semester weeks</button>
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}><Input value={editWeekStart} onChange={setEditWeekStart} placeholder="M/D" style={{flex:"1 1 90px"}}/><span style={{color:"#64748B"}}>–</span><Input value={editWeekEnd} onChange={setEditWeekEnd} placeholder="M/D" style={{flex:"1 1 90px"}}/><SmallBtn onClick={()=>{if(editWeekStart.trim()&&editWeekEnd.trim()){setWeeks([...weeks,`${editWeekStart.trim()}-${editWeekEnd.trim()}`]);setEditWeekStart("");setEditWeekEnd("");}}}>+ Add</SmallBtn></div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>{weeks.map((w,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:i===currentWeekIdx?"#D4A84318":"#261850",borderRadius:8,padding:"8px 12px",border:`1px solid ${i===currentWeekIdx?"#D4A843":"#3D2A6E"}`}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:11,color:"#64748B",fontFamily:"'Space Mono',monospace",width:24}}>{i+1}</span><span style={{fontSize:13,color:"#CBD5E1",fontFamily:"'Space Mono',monospace"}}>{w}</span></div><button onClick={()=>setWeeks(weeks.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div>
+            <div className="hm-card" style={{marginTop:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}><div><h3 style={{fontSize:13,color:"#3B82F6"}}>Semester archives</h3><p style={{fontSize:10,color:"#64748B",marginTop:2}}>Snapshots preserve assignments, reports, proof, and settings.</p></div><SmallBtn onClick={archiveSemester} color="#3B82F6">{archiveBusy?"Saving...":"Archive now"}</SmallBtn></div>
+              {Object.values(archives).length===0?<p style={{fontSize:11,color:"#64748B"}}>No archived semesters yet.</p>:Object.values(archives).sort((a,b)=>String(b.archivedAt).localeCompare(String(a.archivedAt))).map(a=><div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid #3D2A6E"}}><div><div style={{fontSize:12,color:"#E2E8F0"}}>{a.name}</div><div style={{fontSize:10,color:"#64748B"}}>{new Date(a.archivedAt).toLocaleString()}</div></div><SmallBtn onClick={()=>downloadArchive(a)} color="#8B5CF6">Download JSON</SmallBtn></div>)}
+            </div>
+          </div>}
           <div style={{marginTop:24,display:"flex",flexDirection:"column",gap:10}}>
             {!confirmRegen?<button onClick={()=>setConfirmRegen(true)} disabled={saving} style={{background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#FFF",borderRadius:10,padding:"14px 20px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:saving?.6:1}}>{saving?"Saving...":"🔄 Regenerate All"}</button>
             :<div style={{background:"#7F1D1D20",border:"1px solid #EF444450",borderRadius:10,padding:16}}><p style={{fontSize:13,color:"#FCA5A5",marginBottom:12,lineHeight:1.5}}>This erases ALL tracking and creates fresh assignments. Sure?</p><div style={{display:"flex",gap:8}}><button onClick={regenerate} disabled={saving} style={{flex:1,background:"#EF4444",border:"none",color:"#FFF",borderRadius:8,padding:"10px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{saving?"...":"Yes"}</button><button onClick={()=>setConfirmRegen(false)} style={{flex:1,background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:8,padding:"10px",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button></div></div>}
+          </div>
+        </div>}
+
+        {completionDraft&&<div className="proof-modal" role="dialog" aria-modal="true" onClick={e=>{if(e.target===e.currentTarget)setCompletionDraft(null);}}>
+          <div className="proof-sheet">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:14}}><div><div style={{fontSize:10,color:"#D4A843",fontWeight:700,letterSpacing:".08em"}}>SUBMIT FOR VERIFICATION</div><h2 style={{fontSize:18,color:"#F8FAFC",marginTop:4}}>{completionDraft.name}</h2><p style={{fontSize:11,color:"#64748B",marginTop:3}}>{completionDraft.week}</p></div><button onClick={()=>setCompletionDraft(null)} aria-label="Close" style={{background:"none",border:"none",color:"#94A3B8",fontSize:24,cursor:"pointer",lineHeight:1}}>×</button></div>
+            {!myName&&<div style={{background:"#F59E0B12",border:"1px solid #F59E0B40",borderRadius:8,padding:9,fontSize:11,color:"#F59E0B",marginBottom:10}}>Choose your name in the Me tab so the submission records who completed it.</div>}
+            <textarea value={proofNote} onChange={e=>setProofNote(e.target.value)} placeholder="Completion note (optional)" rows={3} style={{width:"100%",resize:"vertical",background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:9}}/>
+            {proofPhoto&&<div style={{position:"relative",marginBottom:9}}><img src={proofPhoto} alt="Completion proof preview" style={{width:"100%",maxHeight:230,objectFit:"cover",borderRadius:9}}/><button onClick={()=>setProofPhoto("")} style={{position:"absolute",right:7,top:7,background:"#140E2ACC",border:"1px solid #EF444480",color:"#FCA5A5",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>Remove</button></div>}
+            <label style={{display:"block",textAlign:"center",background:"#8B5CF618",border:"1px solid #8B5CF650",color:"#A78BFA",borderRadius:8,padding:"10px",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:12}}>{proofPhotoBusy?"Processing photo...":proofPhoto?"Replace photo":"Take or add proof photo"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(file)handleProofPhoto(file);}}/></label>
+            <div style={{background:"#1A1040",borderRadius:9,padding:10,marginBottom:12}}><label style={{fontSize:11,color:"#94A3B8",display:"block",marginBottom:6}}>Supplies for this job</label><select value={supplyStatus} onChange={e=>setSupplyStatus(e.target.value)} style={{width:"100%",background:"#261850",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:7,padding:"9px",fontFamily:"inherit",marginBottom:supplyStatus==="ok"?0:8}}><option value="ok">All stocked</option><option value="low">Running low</option><option value="out">Out of supplies</option></select>{supplyStatus!=="ok"&&<Input value={supplyNote} onChange={setSupplyNote} placeholder="What needs restocking?"/>}</div>
+            <button onClick={submitCompletion} disabled={proofPhotoBusy} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#140E2A",borderRadius:10,padding:"13px",fontSize:14,fontWeight:800,cursor:"pointer",opacity:proofPhotoBusy?.55:1}}>Mark done and send to manager</button>
           </div>
         </div>}
 
@@ -1499,4 +1851,3 @@ export default function HouseJobsApp(){
     </div>
   );
 }
-
