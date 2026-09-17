@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import {useHouseOperations,SundayAttendance,Requests,Supplies,Maintenance,Events,OpsPersonal,OpsManager} from "./HouseOperations.jsx";
+import {keyOf,reconcileMakeups} from "./houseOpsCore.js";
 
 /*
- * HOUSE JOBS — HOUSE HQ OVERHAUL v2 (Spark, Firebase Auth, no Storage)
+ * HOUSE JOBS — HOUSE HQ v3 — HOUSE OPERATIONS (Spark, Firebase Auth, no Storage)
  * With Sunday Cleaning + House Projects
  */
 
@@ -354,7 +356,8 @@ async function fbSet(p,d){if(!firebaseReady)return;const{ref,set}=await import("
 async function fbUpdate(p,d){if(!firebaseReady)return;const{ref,update}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return update(ref(db,p),d);}
 async function fbTransaction(p,updater){if(!firebaseReady)return null;const{ref,runTransaction}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return runTransaction(ref(db,p),updater);}
 async function fbGet(p){if(!firebaseReady)return null;const{ref,get}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");const s=await get(ref(db,p));return s.exists()?s.val():null;}
-async function fbOnValue(p,cb){if(!firebaseReady)return()=>{};const{ref,onValue}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return onValue(ref(db,p),s=>{cb(s.exists()?s.val():null);});}
+async function fbOnValue(p,cb,onError){if(!firebaseReady)return()=>{};const{ref,onValue}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return onValue(ref(db,p),s=>{cb(s.exists()?s.val():null);},onError);}
+const OPS_API={get:fbGet,set:fbSet,update:fbUpdate,transaction:fbTransaction,subscribe:fbOnValue};
 async function fbOnAuth(cb){if(!auth)return()=>{};const{onAuthStateChanged}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js");return onAuthStateChanged(auth,cb);}
 // ─── COMPONENTS ───
 function StatusBadge({status,onClick,disabled}){const c=STATUS_CONFIG[status];return<button onClick={disabled?undefined:onClick} style={{background:c.bg,border:`1.5px solid ${c.border}`,color:c.text,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,cursor:disabled?"default":"pointer",fontFamily:"inherit",opacity:disabled?.7:1}}>{c.label}</button>;}
@@ -365,7 +368,7 @@ function GroupBadge({group,bothGroups}){if(bothGroups)return<span style={{fontSi
 function DiffBadge({d}){const c=DIFF_COLORS[d]||DIFF_COLORS.easy;return<span style={{fontSize:10,fontWeight:700,color:c.color,background:c.bg,padding:"1px 7px",borderRadius:4,border:`1px solid ${c.border}`}}>{d==="easy"?"1 PT":"2 PTS"}</span>;}
 
 
-const HOUSE_TABS=[{key:"me",label:"My jobs",icon:"✓"},{key:"house",label:"House",icon:"⌂"},{key:"projects",label:"Projects",icon:"+"},{key:"issues",label:"Report",icon:"!"},{key:"manager",label:"Manager",icon:"⚙"}];
+const HOUSE_TABS=[{key:"me",label:"My jobs",icon:"✓"},{key:"house",label:"House",icon:"⌂"},{key:"woth",label:"WOTH Day",icon:"⌂"},{key:"projects",label:"Projects",icon:"+"},{key:"issues",label:"Report",icon:"!"},{key:"manager",label:"Manager",icon:"⚙"}];
 const TASK_LABELS={pending:"To do",claimed:"In progress",done:"In review",verified:"Verified",missed:"Missed"};
 
 function TaskFocus({tasks,name,week,onComplete,onProjects}){
@@ -384,10 +387,10 @@ function TaskFocus({tasks,name,week,onComplete,onProjects}){
     try{await navigator.clipboard.writeText(summary);setNotice("Your job list was copied.");}catch{setNotice("Copy is unavailable in this browser.");}
   }
   return <section className="focus-workspace">
-    <div className="focus-hero"><div className="eyebrow">YOUR WEEK, AT A GLANCE</div><h2>{active.length?active.length+" thing"+(active.length===1?"":"s")+" left to do.":tasks.length?"You're caught up.":"No assignments this week."}</h2><p>{tasks.length?reviewed+" verified · "+tasks.filter(t=>t.entry.status==="done").length+" awaiting review":"Check the house schedule or pick up a project."}</p><div className="progress-track"><div style={{width:(tasks.length?reviewed/tasks.length*100:0)+"%"}}/></div><div className="focus-actions"><button onClick={copy}>Copy my list</button><button onClick={onProjects}>Find a project ↗</button></div></div>
+    <div className="focus-hero"><div className="eyebrow">ASSIGNMENT SUMMARY</div><h2>{active.length?active.length+" incomplete assignment"+(active.length===1?"":"s"):tasks.length?"No incomplete assignments":"No assignments this week."}</h2><p>{tasks.length?reviewed+" verified · "+tasks.filter(t=>t.entry.status==="done").length+" awaiting review":"No assignments for the selected week."}</p><div className="progress-track"><div style={{width:(tasks.length?reviewed/tasks.length*100:0)+"%"}}/></div><div className="focus-actions"><button onClick={copy}>Copy my list</button><button onClick={onProjects}>View projects</button></div></div>
     <div className="task-toolbar"><label className="sr-only" htmlFor="task-search">Search your jobs</label><input id="task-search" placeholder="Search your jobs…" value={query} onChange={e=>setQuery(e.target.value)}/><div className="filter-pills">{[["active","To do"],["review","In review"],["verified","Verified"],["all","All"]].map(([key,label])=><button key={key} aria-pressed={filter===key} onClick={()=>setFilter(key)}>{label}</button>)}</div></div>
     <div role="status" className="quiet">{notice}</div>
-    {!shown.length&&<div className="empty-card">{query?"No jobs match that search.":filter==="active"?"Nothing left in your to-do list. Submitted jobs are under In review.":"No jobs in this view yet."}</div>}
+    {!shown.length&&<div className="empty-card">{query?"No jobs match that search.":filter==="active"?"No incomplete jobs. Submitted jobs appear under In review.":"No jobs in this view."}</div>}
     {shown.map(t=>{
       const steps=String(t.desc||"").split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean);
       const key=JSON.stringify([name,week,t.type,t.id]);
@@ -395,7 +398,7 @@ function TaskFocus({tasks,name,week,onComplete,onProjects}){
       const late=actionable&&t.due&&t.due<new Date();
       return <article className="task-card" key={key}><div className="task-top"><span className="eyebrow">{t.type==="sunday"?"SUNDAY CLEANING":t.type==="project"?"HOUSE PROJECT":"WEEKLY JOB"}</span><span className={"task-status "+t.entry.status}>{TASK_LABELS[t.entry.status]||t.entry.status}</span></div><h3>{t.name}</h3><p className={late?"late":"quiet"}>{t.due?(late?"Overdue · ":"Due ")+formatDue(t.due):"No deadline set"}</p>{t.entry.assigned?.length>1&&<p className="quiet">Team: {t.entry.assigned.join(", ")}</p>}{t.entry.rejectionNote&&actionable&&<p className="return-note">Manager note: {t.entry.rejectionNote}</p>}
       {steps.length>0&&<details><summary>Cleaning checklist · {steps.filter((x,i)=>checks[key+":"+i+":"+x]).length}/{steps.length}</summary><p className="quiet">Personal checklist, saved on this device. Submit below when the job is done.</p>{steps.map((step,i)=><label className="check-row" key={i}><input type="checkbox" checked={!!checks[key+":"+i+":"+step]} onChange={()=>toggle(key+":"+i+":"+step)}/><span>{step}</span></label>)}</details>}
-      {actionable?<button className="primary-action" onClick={()=>onComplete(t)}>Submit completed work →</button>:<p className="quiet">{t.entry.status==="done"?"Submitted. Your house manager will review it.":t.entry.status==="verified"?"Checked and approved by your house manager.":"Contact your house manager about this assignment."}</p>}
+      {actionable?<button className="primary-action" onClick={()=>onComplete(t)}>Submit completed work →</button>:<p className="quiet">{t.entry.status==="done"?"Awaiting manager review.":t.entry.status==="verified"?"Verified by manager.":"Contact your house manager about this assignment."}</p>}
       </article>;
     })}
   </section>;
@@ -425,7 +428,6 @@ export default function HouseJobsApp(){
   const[sundayAssignments,setSundayAssignments]=useState({});
   const[sundayEditingJob,setSundayEditingJob]=useState(null);
   const[sundayEditNames,setSundayEditNames]=useState("");
-  const[makeupName,setMakeupName]=useState("");
   // Projects
   const[projects,setProjects]=useState(DEFAULT_PROJECTS);
   const[weeklyProjects,setWeeklyProjects]=useState({});
@@ -451,6 +453,7 @@ export default function HouseJobsApp(){
   // Setup
   const[adminUnlocked,setAdminUnlocked]=useState(false);
   const[authUser,setAuthUser]=useState(null);
+  const ops=useHouseOperations(OPS_API,fbConnected,authUser?.uid);
   const[adminEmail,setAdminEmail]=useState(()=>{try{return localStorage.getItem("housejobs_admin_email")||"";}catch{return"";}});
   const[adminLoading,setAdminLoading]=useState(false);
   const[pwInput,setPwInput]=useState("");
@@ -570,7 +573,11 @@ export default function HouseJobsApp(){
   const saveCfg=useCallback(async(b,j,w,sn)=>{try{
     const cleanJobs=j.map(job=>({...job,rotating:!!job.rotating,floorRotate:!!job.floorRotate}));
     if(fbConnected)await fbSet("config",{brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn});else await localStoreSet("housejobs:config",JSON.stringify({brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn}));}catch(e){console.error("saveCfg error:",e);}},[fbConnected]);
-  const saveSunA=useCallback(async a=>{try{if(fbConnected){skipSunSync.current=true;await fbSet("sundayAssignments",sanitizeObjKeys(a));}else await localStoreSet("housejobs:sundayAssignments",JSON.stringify(a));}catch(e){console.error("saveSunA error:",e);}},[fbConnected]);
+  const saveSunA=useCallback(async a=>{try{
+    const reconcile=current=>{const proposed=sanitizeObjKeys(a);for(const [week,record] of Object.entries(current||{})){if(proposed[week])for(const field of ["attendance","makeupVersion","manualMakeups","makeupSources","autoMakeupAssignments"])if(record[field]!==undefined)proposed[week][field]=record[field];}return reconcileMakeups(proposed,weeks,sundayJobs);};
+    if(fbConnected){await fbGet("sundayAssignments");await fbTransaction("sundayAssignments",reconcile);}
+    else{const clean=reconcile(sanitizeObjKeys(sundayAssignments));const local=Object.fromEntries(Object.entries(clean).map(([key,value])=>[weeks.find(w=>sanitizeKey(w)===key)||key,value]));setSundayAssignments(local);await localStoreSet("housejobs:sundayAssignments",JSON.stringify(local));}
+  }catch(e){console.error("saveSunA error:",e);alert("Sunday schedule was not saved. Refresh before trying again.");}},[fbConnected,weeks,sundayJobs,sundayAssignments]);
   const saveSunCfg=useCallback(async(ep,op,sj)=>{try{if(fbConnected)await fbSet("sundayConfig",{evenPins:ep,oddPins:op,sundayJobs:sj});else await localStoreSet("housejobs:sundayConfig",JSON.stringify({evenPins:ep,oddPins:op,sundayJobs:sj}));}catch(e){console.error("saveSunCfg error:",e);}},[fbConnected]);
   const saveProjA=useCallback(async a=>{try{if(fbConnected){skipProjSync.current=true;await fbSet("weeklyProjects",sanitizeObjKeys(a));}else await localStoreSet("housejobs:weeklyProjects",JSON.stringify(a));}catch(e){console.error("saveProjA error:",e);}},[fbConnected]);
   const saveProjCfg=useCallback(async p=>{try{if(fbConnected)await fbSet("projectsConfig",p);}catch(e){console.error("saveProjCfg error:",e);}},[fbConnected]);
@@ -613,15 +620,20 @@ export default function HouseJobsApp(){
     try{
       const proof={note:proofNote.trim(),supplyStatus,supplyNote:supplyNote.trim(),submittedBy:myName||"Unknown",submittedUid:authUser?.uid||"local",submittedAt:new Date().toISOString()};
       const{type,week,id,index}=completionDraft;
+      const submitOnline=async(path,changes)=>{
+        const update={};Object.entries(changes).forEach(([key,value])=>{update[path+"/"+key]=value;});
+        if(supplyStatus!=="ok")update["houseOps/supplies/"+keyOf(type+"|"+week+"|"+id+"|"+proof.submittedAt)]={item:supplyNote.trim()||"Supplies needed",location:completionDraft.name,severity:supplyStatus==="out"?"out":"low",status:"open",reporterUid:proof.submittedUid,reporterName:proof.submittedBy,createdAt:proof.submittedAt};
+        await fbUpdate("",update);
+      };
       if(type==="weekly"){
         const u=JSON.parse(JSON.stringify(assignments));
-        if(u[week]?.[id]){u[week][id]={...u[week][id],status:"done",proof};if(fbConnected)await fbUpdate(`assignments/${sanitizeKey(week)}/${sanitizeKey(id)}`,{status:"done",proof});else await saveA(u);setAssignments(u);}
+        if(u[week]?.[id]){u[week][id]={...u[week][id],status:"done",proof};if(fbConnected)await submitOnline(`assignments/${sanitizeKey(week)}/${sanitizeKey(id)}`,{status:"done",proof});else await saveA(u);setAssignments(u);}
       }else if(type==="sunday"){
         const u=JSON.parse(JSON.stringify(sundayAssignments));
-        if(u[week]?.jobs?.[id]){u[week].jobs[id]={...u[week].jobs[id],status:"done",proof};if(fbConnected)await fbUpdate(`sundayAssignments/${sanitizeKey(week)}/jobs/${sanitizeKey(id)}`,{status:"done",proof});else await saveSunA(u);setSundayAssignments(u);}
+        if(u[week]?.jobs?.[id]){u[week].jobs[id]={...u[week].jobs[id],status:"done",proof};if(fbConnected)await submitOnline(`sundayAssignments/${sanitizeKey(week)}/jobs/${sanitizeKey(id)}`,{status:"done",proof});else await saveSunA(u);setSundayAssignments(u);}
       }else if(type==="project"){
         const u=JSON.parse(JSON.stringify(weeklyProjects));
-        if(u[week]?.projects?.[index]){u[week].projects[index]={...u[week].projects[index],status:"done",completedBy:u[week].projects[index].claimedBy||myName,proof};if(fbConnected)await fbUpdate(`weeklyProjects/${sanitizeKey(week)}/projects/${index}`,{status:"done",completedBy:u[week].projects[index].completedBy,proof});else await saveProjA(u);setWeeklyProjects(u);}
+        if(u[week]?.projects?.[index]){u[week].projects[index]={...u[week].projects[index],status:"done",completedBy:u[week].projects[index].claimedBy||myName,proof};if(fbConnected)await submitOnline(`weeklyProjects/${sanitizeKey(week)}/projects/${index}`,{status:"done",completedBy:u[week].projects[index].completedBy,proof});else await saveProjA(u);setWeeklyProjects(u);}
       }
       setCompletionDraft(null);
     }catch(e){console.error("Completion submission failed:",e);alert("Could not submit this job. Check your connection and try again.");}finally{setCompletionBusy(false);}
@@ -855,23 +867,6 @@ export default function HouseJobsApp(){
     setSundayAssignments(u);saveSunA(u);
   }
 
-  // Makeup functions — adds someone to next week's Sunday cleaning
-  function addMakeup(name){
-    const nextIdx=currentWeekIdx+1;
-    if(nextIdx>=weeks.length||!name.trim())return;
-    const nextWeek=weeks[nextIdx];
-    const u=JSON.parse(JSON.stringify(sundayAssignments));
-    if(!u[nextWeek])return;
-    if(!u[nextWeek].makeups)u[nextWeek].makeups=[];
-    if(!u[nextWeek].makeups.includes(name.trim())){u[nextWeek].makeups.push(name.trim());}
-    setSundayAssignments(u);saveSunA(u);
-    setMakeupName("");
-  }
-  function removeMakeup(week,name){
-    const u=JSON.parse(JSON.stringify(sundayAssignments));
-    if(u[week]?.makeups){u[week].makeups=u[week].makeups.filter(n=>n!==name);}
-    setSundayAssignments(u);saveSunA(u);
-  }
   // Project actions
   async function claimProject(week,projIdx,name){
     if(!name?.trim()||!fbConnected){
@@ -944,6 +939,7 @@ export default function HouseJobsApp(){
 
   // ─── STATS ───
   const brotherNames=useMemo(()=>getBrotherNames(brothers),[brothers]);
+  const operationsNames=[...new Set([...brotherNames,...evenPins,...oddPins])].sort();
   const stats=useMemo(()=>{const s={};brotherNames.forEach(b=>{s[b]={total:0,done:0,missed:0,verified:0,pending:0};});Object.values(assignments).forEach(wj=>{if(!wj||typeof wj!=="object")return;Object.values(wj).forEach(e=>{if(!e?.assigned)return;e.assigned.forEach(b=>{if(s[b]){s[b].total++;s[b][e.status]++;}});});});return s;},[assignments,brotherNames]);
 
   const projectStats=useMemo(()=>{
@@ -965,11 +961,11 @@ export default function HouseJobsApp(){
   const verificationQueue=useMemo(()=>{
     const list=[];
     Object.entries(assignments).forEach(([week,data])=>Object.entries(data||{}).forEach(([id,entry])=>{if(entry?.status==="done")list.push({type:"weekly",week,id,name:jobs.find(j=>j.id===id)?.name||id,entry});}));
-    Object.entries(sundayAssignments).forEach(([week,data])=>Object.entries(data?.jobs||{}).forEach(([id,entry])=>{if(entry?.status==="done")list.push({type:"sunday",week,id,name:sundayJobs.find(j=>j.id===id)?.name||id,entry});}));
+    Object.entries(sundayAssignments).forEach(([week,data])=>Object.entries(data?.jobs||{}).forEach(([id,entry])=>{if(entry?.status==="done")list.push({type:"sunday",week,id,name:[...sundayJobs,...(data.tempJobs||[])].find(j=>j.id===id)?.name||id,entry});}));
     Object.entries(weeklyProjects).forEach(([week,data])=>(data?.projects||[]).forEach((entry,index)=>{if(entry?.status==="done")list.push({type:"project",week,index,id:entry.id,name:entry.name,entry});}));
     return list.sort((a,b)=>String(b.entry?.proof?.submittedAt||"").localeCompare(String(a.entry?.proof?.submittedAt||"")));
   },[assignments,sundayAssignments,weeklyProjects,jobs,sundayJobs]);
-  const supplyReports=useMemo(()=>verificationQueue.filter(x=>x.entry?.proof?.supplyStatus&&x.entry.proof.supplyStatus!=="ok"),[verificationQueue]);
+  const supplyReports=Object.values(ops.data.supplies||{}).filter(r=>r.status==="open");
   const openIssues=useMemo(()=>{
     const rank={urgent:4,high:3,medium:2,low:1};
     return houseIssues.filter(x=>x.status!=="closed").sort((a,b)=>(rank[b.priority]||0)-(rank[a.priority]||0)||String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -995,9 +991,14 @@ export default function HouseJobsApp(){
 
   const personalTasks=[
     ...jobs.filter(j=>weekData[j.id]?.assigned?.includes(myName)).map(j=>({...j,type:"weekly",entry:weekData[j.id],due:getDueDate(currentWeek,"weekly",houseSettings)})),
-    ...sundayJobs.filter(j=>sunWeekData.jobs?.[j.id]?.assigned?.includes(myName)).map(j=>({...j,type:"sunday",entry:sunWeekData.jobs[j.id],due:getDueDate(currentWeek,"sunday",houseSettings)})),
+    ...[...sundayJobs,...(sunWeekData.tempJobs||[])].filter(j=>sunWeekData.jobs?.[j.id]?.assigned?.includes(myName)).map(j=>({...j,type:"sunday",entry:sunWeekData.jobs[j.id],due:getDueDate(currentWeek,"sunday",houseSettings)})),
     ...(projWeekData.projects||[]).map((p,index)=>({...p,type:"project",entry:p,index,due:null})).filter(p=>p.claimedBy===myName)
   ];
+  const legacySupplies=[
+    ...Object.entries(assignments).flatMap(([week,data])=>Object.entries(data||{}).map(([id,entry])=>({type:"weekly",week,id,entry,title:jobs.find(j=>j.id===id)?.name||id}))),
+    ...Object.entries(sundayAssignments).flatMap(([week,data])=>Object.entries(data?.jobs||{}).map(([id,entry])=>({type:"sunday",week,id,entry,title:sundayJobs.find(j=>j.id===id)?.name||id}))),
+    ...Object.entries(weeklyProjects).flatMap(([week,data])=>(data.projects||[]).map(entry=>({type:"project",week,id:entry.id,entry,title:entry.name})))
+  ].filter(r=>r.entry?.proof?.supplyStatus&&r.entry.proof.supplyStatus!=="ok").map(r=>({id:keyOf(r.type+"|"+r.week+"|"+r.id+"|"+r.entry.proof.submittedAt),item:r.entry.proof.supplyNote||"Supplies needed",location:r.title,severity:r.entry.proof.supplyStatus==="out"?"out":"low",status:"open",reporterUid:r.entry.proof.submittedUid||"legacy",reporterName:r.entry.proof.submittedBy||"House member",createdAt:r.entry.proof.submittedAt||new Date().toISOString()}));
   const recentActivity=[
     ...Object.entries(assignments).flatMap(([week,data])=>Object.entries(data||{}).map(([id,entry])=>({week,name:jobs.find(j=>j.id===id)?.name||id,entry}))),
     ...Object.entries(sundayAssignments).flatMap(([week,data])=>Object.entries(data?.jobs||{}).map(([id,entry])=>({week,name:sundayJobs.find(j=>j.id===id)?.name||id,entry}))),
@@ -1124,18 +1125,22 @@ body{background:#10131c}
       </div>
 
       <nav className="primary-nav" aria-label="Main navigation">
-        {HOUSE_TABS.map(tab=><button key={tab.key} aria-current={(view===tab.key||tab.key==="house"&&["dashboard","sunday","roster","leaderboard"].includes(view)||tab.key==="manager"&&["setup","sunday_setup","project_setup"].includes(view))?"page":undefined} onClick={()=>{setView(tab.key);setSelectedBrother(null);}}><span aria-hidden="true">{tab.icon}</span>{tab.label}{tab.key==="manager"&&adminUnlocked&&verificationQueue.length>0&&<small>{verificationQueue.length}</small>}</button>)}
+        {HOUSE_TABS.map(tab=><button key={tab.key} aria-current={(view===tab.key||tab.key==="house"&&["dashboard","sunday","roster","leaderboard","requests","supplies","maintenance","emergency"].includes(view)||tab.key==="manager"&&["setup","sunday_setup","project_setup"].includes(view))?"page":undefined} onClick={()=>{setView(tab.key);setSelectedBrother(null);}}><span aria-hidden="true">{tab.icon}</span>{tab.label}{tab.key==="manager"&&adminUnlocked&&verificationQueue.length>0&&<small>{verificationQueue.length}</small>}</button>)}
       </nav>
 
       <div style={{padding:"16px 20px 100px"}}>
 
-        {view==="house"&&<section className="fu"><div className="focus-hero"><div className="eyebrow">SIGEP · MI ETA</div><h2>A house that works together.</h2><p>Schedules, people, and the work getting done.</p></div><div className="house-links">{[["dashboard","Weekly schedule","Assignments and deadlines"],["sunday","Sunday cleaning","Teams and kitchen duty"],["roster","Brothers","Find people and their assignments"],["leaderboard","House progress","Completion and semester stats"]].map(([key,title,desc])=><button key={key} onClick={()=>setView(key)}><strong>{title} ↗</strong><span>{desc}</span></button>)}</div><h3 className="section-title">Recent submissions</h3>{recentActivity.length?recentActivity.map((t,i)=><div className="activity-row" key={i}><span className="activity-dot"/><div><strong>{t.name}</strong><p>{t.entry.proof?.submittedBy||t.entry.completedBy||"House member"} · {t.week} · {TASK_LABELS[t.entry.status]}</p></div></div>):<div className="empty-card">Completed work will appear here as brothers submit it.</div>}</section>}
+        {view==="house"&&<section className="fu"><div className="focus-hero"><h2>House</h2></div><div className="house-links">{[["dashboard","Weekly schedule","Assignments and deadlines"],["sunday","Sunday cleaning","Teams and kitchen duty"],["roster","Brothers","Roster and assignments"],["leaderboard","House progress","Completion and semester stats"],["requests","Requests","Swaps and absences"],["supplies","Supplies","Report and restock"],["maintenance","Maintenance","Recurring house tasks"],["emergency","Emergency cleanings","Extra cleanings and assignments"]].map(([key,title,desc])=><button key={key} onClick={()=>setView(key)}><strong>{title} ↗</strong><span>{desc}</span></button>)}</div><h3 className="section-title">Recent submissions</h3>{recentActivity.length?recentActivity.map((t,i)=><div className="activity-row" key={i}><span className="activity-dot"/><div><strong>{t.name}</strong><p>{t.entry.proof?.submittedBy||t.entry.completedBy||"House member"} · {t.week} · {TASK_LABELS[t.entry.status]}</p></div></div>):<div className="empty-card">No recent submissions.</div>}</section>}
         {/* ══════ MY VIEW ══════ */}
+        {view==="requests"&&<Requests ops={ops} admin={adminUnlocked} name={myName} names={operationsNames} weeks={weeks} assignments={assignments} sundays={sundayAssignments} jobs={jobs} sundayJobs={sundayJobs}/>}
+        {view==="supplies"&&<Supplies ops={ops} admin={adminUnlocked} name={myName} legacy={legacySupplies}/>}
+        {view==="maintenance"&&<Maintenance ops={ops} admin={adminUnlocked} names={operationsNames}/>}
+        {(view==="woth"||view==="emergency")&&<Events key={view} ops={ops} kind={view==="woth"?"woth":"emergency"} admin={adminUnlocked} name={myName} names={operationsNames}/>}
         {view==="me"&&<div className="fu">
           {!myName?<div style={{maxWidth:340,margin:"30px auto",textAlign:"center"}}>
             <div style={{fontSize:32,marginBottom:16}}>👋</div>
-            <h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9",marginBottom:8}}>Welcome!</h2>
-            <p style={{fontSize:13,color:"#A0AEC3",marginBottom:20,lineHeight:1.5}}>Start typing your name to find yourself in the roster.</p>
+            <h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9",marginBottom:8}}>Select your name</h2>
+            <p style={{fontSize:13,color:"#A0AEC3",marginBottom:20,lineHeight:1.5}}>Search the chapter roster.</p>
             {(()=>{
               // Build full name list from all sources
               const allNamesSet=new Set([...brotherNames,...evenPins,...oddPins]);
@@ -1192,6 +1197,7 @@ body{background:#10131c}
               </div>
             </div>}
 
+            <OpsPersonal ops={ops} name={myName} onNavigate={setView}/>
             <TaskFocus tasks={personalTasks} name={myName} week={currentWeek} onProjects={()=>setView("projects")} onComplete={t=>openCompletion(t.type,currentWeek,t.id,t.index,t.name)}/>
 
             {/* Quick Stats */}
@@ -1292,7 +1298,7 @@ body{background:#10131c}
           {(()=>{
             const pool=sunWeekData.bothGroups?[...evenPins,...oddPins]:sunWeekData.group==="even"?evenPins:oddPins;
             const makeups=sunWeekData.makeups||[];
-            const totalPool=pool.length+makeups.length;
+            const totalPool=new Set([...pool,...makeups]).size;
             const assignedSet=new Set();
             Object.values(sunWeekData.jobs||{}).forEach(j=>{(j.assigned||[]).forEach(n=>assignedSet.add(n));});
             const totalAssigned=assignedSet.size;
@@ -1351,43 +1357,7 @@ body{background:#10131c}
               </div>);})}
           </div>
 
-          {/* MAKEUP SECTION */}
-          <div style={{marginTop:20,background:"#1C2332",borderRadius:12,padding:16,border:"1px solid #F59E0B40"}}>
-            <h3 style={{fontSize:13,fontWeight:700,color:"#F59E0B",marginBottom:4,letterSpacing:"0.05em"}}>MISSED SUNDAY?</h3>
-            <p style={{fontSize:12,color:"#A0AEC3",lineHeight:1.6,marginBottom:12}}>
-              If you missed this week's cleaning, enter your name below to be added to <span style={{color:"#CBD5E1",fontWeight:600}}>next week's</span> Sunday cleaning regardless of your pin group. You must also fill out the absence form.
-            </p>
-            {currentWeekIdx<weeks.length-1?<>
-              <div style={{display:"flex",gap:8,marginBottom:10}}>
-                <Input value={makeupName} onChange={setMakeupName} placeholder="Your full name..." style={{flex:1,padding:"8px 12px",fontSize:13}}/>
-                <SmallBtn onClick={()=>addMakeup(makeupName)} color="#F59E0B">Add Me</SmallBtn>
-              </div>
-            </>:<p style={{fontSize:12,color:"#A0AEC3",fontStyle:"italic"}}>Last week of the semester — no makeup available.</p>}
-
-            {/* Show who's signed up for makeup next week */}
-            {currentWeekIdx<weeks.length-1&&(()=>{
-              const nextWeek=weeks[currentWeekIdx+1];
-              const nextData=sundayAssignments[nextWeek];
-              const makeups=nextData?.makeups||[];
-              if(makeups.length===0)return null;
-              return<div style={{marginTop:8}}>
-                <div style={{fontSize:11,color:"#94A3B8",fontWeight:600,marginBottom:6}}>SIGNED UP FOR NEXT WEEK ({nextWeek}):</div>
-                {makeups.map((name,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#161C29",borderRadius:6,padding:"6px 10px",marginBottom:4,border:"1px solid #364258"}}>
-                  <span style={{fontSize:13,color:"#FCD34D"}}>{name}</span>
-                  {(adminUnlocked)&&<button onClick={()=>removeMakeup(nextWeek,name)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:16,padding:"0 4px",lineHeight:1}}>×</button>}
-                </div>)}
-              </div>;
-            })()}
-
-            {/* Show makeups for current week if any */}
-            {(sunWeekData.makeups||[]).length>0&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #364258"}}>
-              <div style={{fontSize:11,color:"#94A3B8",fontWeight:600,marginBottom:6}}>MAKEUP MEMBERS THIS WEEK:</div>
-              {sunWeekData.makeups.map((name,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#161C29",borderRadius:6,padding:"6px 10px",marginBottom:4,border:"1px solid #F59E0B30"}}>
-                <span style={{fontSize:13,color:"#FCD34D"}}>{name}</span>
-                {adminUnlocked&&<button onClick={()=>removeMakeup(currentWeek,name)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:16,padding:"0 4px",lineHeight:1}}>×</button>}
-              </div>)}
-            </div>}
-          </div>
+          <SundayAttendance ops={ops} admin={adminUnlocked} week={currentWeek} weeks={weeks} data={sundayAssignments[currentWeek]} definitions={sundayJobs} even={evenPins} odd={oddPins} onRequests={()=>setView("requests")}/>
 
           {adminUnlocked&&<div style={{marginTop:16}}>
             {!showTempJobForm?<button onClick={()=>setShowTempJobForm(true)} style={{width:"100%",background:"#C41E3A18",border:"1px solid #C41E3A40",color:"#C41E3A",borderRadius:10,padding:"12px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>+ Add Temp Job (this week only)</button>
@@ -1609,7 +1579,7 @@ body{background:#10131c}
             <Input value={issueForm.location} onChange={v=>setIssueForm({...issueForm,location:v})} placeholder="Location, e.g. 2nd floor bathroom" style={{marginBottom:8}}/>
             <textarea value={issueForm.description} onChange={e=>setIssueForm({...issueForm,description:e.target.value})} placeholder={issueForm.category==="Supplies"?"What supply is low or missing?":"What is wrong?"} rows={3} style={{width:"100%",resize:"vertical",background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:8}}/>
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-              <span style={{fontSize:11,color:"#A0AEC3"}}>Add enough detail for the manager to find and fix it.</span>
+              <span style={{fontSize:11,color:"#A0AEC3"}}>Include the location and issue details.</span>
               <div style={{flex:1}}/>
               <button onClick={submitIssue} disabled={!issueForm.description.trim()} style={{background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#10131C",borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:!issueForm.description.trim()?0.5:1}}>Submit report</button>
             </div>
@@ -1687,7 +1657,7 @@ body{background:#10131c}
           <div style={{marginTop:20,background:"#1C2332",borderRadius:12,padding:16,border:"1px solid #364258"}}>
             <h3 style={{fontSize:13,fontWeight:700,color:"#EF4444",marginBottom:8,letterSpacing:"0.05em"}}>FINE TRACKER</h3>
             <p style={{fontSize:12,color:"#A0AEC3",lineHeight:1.6,marginBottom:12}}>Per Amendment 22: missed jobs = fines. 3+ misses flagged for Standards.</p>
-            {brotherNames.filter(b=>(stats[b]?.missed||0)>0).length===0?<div style={{fontSize:13,color:"#D4A843",textAlign:"center",padding:10}}>No missed jobs yet!</div>
+            {brotherNames.filter(b=>(stats[b]?.missed||0)>0).length===0?<div style={{fontSize:13,color:"#D4A843",textAlign:"center",padding:10}}>No missed jobs recorded.</div>
             :brotherNames.filter(b=>(stats[b]?.missed||0)>0).sort((a,b)=>(stats[b]?.missed||0)-(stats[a]?.missed||0)).map(b=><div key={b} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #364258"}}><span style={{fontSize:13,color:"#CBD5E1"}}>{b}</span><span style={{fontSize:12,fontWeight:700,fontFamily:"'Space Mono',monospace",color:(stats[b]?.missed||0)>=3?"#EF4444":"#F59E0B"}}>{stats[b]?.missed||0} miss{(stats[b]?.missed||0)!==1?"es":""}{(stats[b]?.missed||0)>=3&&" ⚠️"}</span></div>)}
           </div>
         </div>}
@@ -1702,8 +1672,9 @@ body{background:#10131c}
           <button onClick={checkPassword} disabled={adminLoading} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#10131C",borderRadius:10,padding:"13px",fontWeight:700,cursor:"pointer",opacity:adminLoading?.6:1}}>{adminLoading?"Signing in...":"Unlock dashboard"}</button>
         </div>}
         {view==="manager"&&adminUnlocked&&<div className="fu">
+          <OpsManager ops={ops} onNavigate={setView}/>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div><h2 style={{fontSize:19,fontWeight:700,color:"#F8FAFC"}}>House Manager</h2><p style={{fontSize:12,color:"#A0AEC3",marginTop:2}}>Everything that needs your attention</p></div>
+            <div><h2 style={{fontSize:19,fontWeight:700,color:"#F8FAFC"}}>House Manager</h2><p style={{fontSize:12,color:"#A0AEC3",marginTop:2}}>Reviews, issues, and assignments</p></div>
             <button onClick={lockAdmin} style={{background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:7,padding:"6px 9px",fontSize:11,cursor:"pointer"}}>🔒 Lock</button>
           </div>
           <div className="stat-grid" style={{marginBottom:14}}>
@@ -1713,11 +1684,11 @@ body{background:#10131c}
             {[["Sunday","sunday","#8B5CF6"],["House issues","issues","#F59E0B"],["Setup","setup","#D4A843"],["Archive","archive","#3B82F6"]].map(([label,target,color])=><button key={label} onClick={()=>target==="archive"?archiveSemester():setView(target)} disabled={target==="archive"&&archiveBusy} style={{minWidth:112,background:`${color}18`,border:`1px solid ${color}50`,color,borderRadius:9,padding:"10px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{target==="archive"&&archiveBusy?"Saving...":label}</button>)}
           </div>
 
-          <section className="manager-brief"><div><div className="eyebrow">YOUR NEXT MOVE</div><h3>{verificationQueue.length?"Review "+verificationQueue.length+" submitted job"+(verificationQueue.length===1?"":"s"):openIssues.length?"Check open house issues":"Review upcoming assignments"}</h3><p>All weeks included. Nothing gets hidden when the week changes.</p></div><button onClick={copyManagerBrief}>Copy house brief</button><p role="status">{briefNotice}</p></section>
+          <section className="manager-brief"><div><div className="eyebrow">PENDING ACTIONS</div><h3>{verificationQueue.length?"Review "+verificationQueue.length+" submitted job"+(verificationQueue.length===1?"":"s"):openIssues.length?"Check open house issues":"Review upcoming assignments"}</h3><p>Includes all weeks.</p></div><button onClick={copyManagerBrief}>Copy house brief</button><p role="status">{briefNotice}</p></section>
           <div className="filter-pills">{[["all","All work"],["weekly","Weekly"],["sunday","Sunday"],["project","Projects"]].map(([key,label])=><button key={key} aria-pressed={reviewFilter===key} onClick={()=>setReviewFilter(key)}>{label}</button>)}</div>
           <h3 className="section-title">AWAITING VERIFICATION</h3>
           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
-            {verificationQueue.filter(t=>reviewFilter==="all"||t.type===reviewFilter).length===0?<div className="hm-card" style={{fontSize:13,color:"#A0AEC3",textAlign:"center"}}>Nothing waiting for review.</div>:verificationQueue.filter(t=>reviewFilter==="all"||t.type===reviewFilter).map((item,i)=><div key={`${item.type}-${item.week}-${item.id||i}`} className="hm-card">
+            {verificationQueue.filter(t=>reviewFilter==="all"||t.type===reviewFilter).length===0?<div className="hm-card" style={{fontSize:13,color:"#A0AEC3",textAlign:"center"}}>No submissions awaiting review.</div>:verificationQueue.filter(t=>reviewFilter==="all"||t.type===reviewFilter).map((item,i)=><div key={`${item.type}-${item.week}-${item.id||i}`} className="hm-card">
               <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
                 <div style={{flex:1,minWidth:0}}><div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color:item.type==="sunday"?"#A78BFA":item.type==="project"?"#EC4899":"#D4A843",fontWeight:700}}>{item.type.toUpperCase()}</span><span style={{fontSize:10,color:"#A0AEC3"}}>{item.week}</span></div><div style={{fontSize:14,color:"#F1F5F9",fontWeight:600,marginTop:4}}>{item.name}</div><div style={{fontSize:11,color:"#94A3B8",marginTop:4}}>{item.entry?.proof?.submittedBy||item.entry?.completedBy||"Unknown"}{item.entry?.proof?.submittedAt&&` • ${new Date(item.entry.proof.submittedAt).toLocaleString()}`}</div>{item.entry?.proof?.note&&<p style={{fontSize:12,color:"#CBD5E1",marginTop:6,lineHeight:1.4}}>{item.entry.proof.note}</p>}{item.entry?.proof?.supplyStatus&&item.entry.proof.supplyStatus!=="ok"&&<p style={{fontSize:11,color:"#F59E0B",marginTop:5}}>Supply {item.entry.proof.supplyStatus}: {item.entry.proof.supplyNote||"No details"}</p>}</div>
                 {item.entry?.proof?.photo&&<img src={item.entry.proof.photo} alt="Completion proof" style={{width:76,height:76,objectFit:"cover",borderRadius:8,flexShrink:0}}/>}
@@ -1729,15 +1700,15 @@ body{background:#10131c}
           <div className="manager-grid">
             <section className="hm-card hm-wide">
               <h3 style={{fontSize:12,color:"#EF4444",letterSpacing:".08em",marginBottom:9}}>OVERDUE ({overdueItems.length})</h3>
-              {overdueItems.length===0?<p style={{fontSize:12,color:"#A0AEC3"}}>Nothing overdue.</p>:overdueItems.slice(0,12).map(item=><div key={`${item.type}-${item.week}-${item.id}`} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 0",borderBottom:"1px solid #364258"}}><div><div style={{fontSize:12,color:"#E2E8F0"}}>{item.name}</div><div style={{fontSize:10,color:"#A0AEC3"}}>{item.week} • {(item.assigned||[]).join(", ")}</div></div><span style={{fontSize:10,color:"#EF4444",whiteSpace:"nowrap"}}>{formatDue(item.due)}</span></div>)}
+              {overdueItems.length===0?<p style={{fontSize:12,color:"#A0AEC3"}}>No overdue assignments.</p>:overdueItems.slice(0,12).map(item=><div key={`${item.type}-${item.week}-${item.id}`} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 0",borderBottom:"1px solid #364258"}}><div><div style={{fontSize:12,color:"#E2E8F0"}}>{item.name}</div><div style={{fontSize:10,color:"#A0AEC3"}}>{item.week} • {(item.assigned||[]).join(", ")}</div></div><span style={{fontSize:10,color:"#EF4444",whiteSpace:"nowrap"}}>{formatDue(item.due)}</span></div>)}
             </section>
             <section className="hm-card">
               <h3 style={{fontSize:12,color:"#F59E0B",letterSpacing:".08em",marginBottom:8}}>OPEN ISSUES</h3>
               {openIssues.length===0?<p style={{fontSize:12,color:"#A0AEC3"}}>None</p>:openIssues.slice(0,5).map(x=><button key={x.id} onClick={()=>setView("issues")} style={{display:"block",width:"100%",background:"none",border:"none",borderBottom:"1px solid #364258",padding:"7px 0",textAlign:"left",color:"#CBD5E1",fontSize:12,cursor:"pointer"}}><span style={{color:x.priority==="urgent"?"#EF4444":"#F59E0B",fontSize:9,fontWeight:700}}>{x.priority?.toUpperCase()} </span>{x.description}</button>)}
             </section>
             <section className="hm-card">
-              <h3 style={{fontSize:12,color:"#8B5CF6",letterSpacing:".08em",marginBottom:8}}>SUPPLIES</h3>
-              {supplyReports.length===0?<p style={{fontSize:12,color:"#A0AEC3"}}>No shortages reported.</p>:supplyReports.slice(0,5).map((x,i)=><div key={i} style={{fontSize:12,color:"#CBD5E1",padding:"6px 0",borderBottom:"1px solid #364258"}}><span style={{color:"#F59E0B"}}>{x.entry.proof.supplyStatus.toUpperCase()}</span> • {x.entry.proof.supplyNote||x.name}</div>)}
+              <h3 style={{fontSize:12,color:"#8B5CF6",letterSpacing:".08em",marginBottom:8}}>SUPPLIES</h3><SmallBtn onClick={()=>setView("supplies")}>Open supply list</SmallBtn>
+              {supplyReports.length===0?<p style={{fontSize:12,color:"#A0AEC3"}}>No shortages reported.</p>:supplyReports.slice(0,5).map((x,i)=><div key={i} style={{fontSize:12,color:"#CBD5E1",padding:"6px 0",borderBottom:"1px solid #364258"}}><span style={{color:"#F59E0B"}}>{x.severity.toUpperCase()}</span> • {x.item}</div>)}
             </section>
             <section className="hm-card hm-wide">
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><h3 style={{fontSize:12,color:"#F59E0B",letterSpacing:".08em"}}>KITCHEN ROTATION</h3><span style={{fontSize:11,color:"#94A3B8"}}>{kitchenStats.served.length}/{kitchenStats.all.length} served</span></div>
