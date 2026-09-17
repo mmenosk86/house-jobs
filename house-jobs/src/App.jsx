@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 
 /*
- * HOUSE JOBS — Firebase Realtime Database Edition, adding new security features
+ * HOUSE JOBS — Firebase Realtime Database Edition
  * With Sunday Cleaning + House Projects
  */
 
