@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 
 /*
- * HOUSE JOBS — Firebase Realtime Database Edition
+ * HOUSE JOBS — SPARK SECURITY BUILD (Firebase Auth enabled, Storage disabled)
  * With Sunday Cleaning + House Projects
  */
 
@@ -11,7 +11,6 @@ const FIREBASE_CONFIG = {
   authDomain: "house-jobs-19e96.firebaseapp.com",
   databaseURL: "https://house-jobs-19e96-default-rtdb.firebaseio.com",
   projectId: "house-jobs-19e96",
-  storageBucket: "house-jobs-19e96.firebasestorage.app",
   messagingSenderId: "568801873290",
   appId: "1:568801873290:web:7db8c4c0910ceeb29f0c73"
 };
@@ -327,30 +326,6 @@ function generateWeekLabels(startValue,endValue,excludedText=""){
   }
   return labels;
 }
-function compressImage(file){
-  return new Promise((resolve,reject)=>{
-    if(!file){resolve("");return;}
-    if(file.size>8*1024*1024){reject(new Error("Photo must be under 8 MB"));return;}
-    const reader=new FileReader();
-    reader.onerror=()=>reject(new Error("Could not read photo"));
-    reader.onload=()=>{
-      const img=new Image();
-      img.onerror=()=>reject(new Error("Could not process photo"));
-      img.onload=()=>{
-        const scale=Math.min(1,1024/Math.max(img.width,img.height));
-        const canvas=document.createElement("canvas");
-        canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
-        canvas.getContext("2d").drawImage(img,0,0,canvas.width,canvas.height);
-        resolve(canvas.toDataURL("image/jpeg",.72));
-      };
-      img.src=reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-async function hashPassword(pw){const e=new TextEncoder().encode(pw);const b=await crypto.subtle.digest("SHA-256",e);return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join("");}
-
 // Local fallback used when Firebase is unavailable.
 async function localStoreGet(key){try{const value=localStorage.getItem(key);return value===null?null:{value};}catch{return null;}}
 async function localStoreSet(key,value){try{localStorage.setItem(key,value);}catch{}}
@@ -361,13 +336,26 @@ function sanitizeObjKeys(o){const r={};Object.entries(o).forEach(([k,v])=>{r[san
 function desanitizeObjKeys(o,keys){const m={};keys.forEach(k=>{m[sanitizeKey(k)]=k;});const r={};Object.entries(o).forEach(([sk,v])=>{r[m[sk]||sk]=v;});return r;}
 
 // Firebase
-let db=null,firebaseReady=false;
-async function initFirebase(){if(firebaseReady)return true;if(FIREBASE_CONFIG.apiKey==="YOUR_API_KEY")return false;try{const{initializeApp}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js");const{getDatabase}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");db=getDatabase(initializeApp(FIREBASE_CONFIG));firebaseReady=true;return true;}catch(e){return false;}}
+let db=null,auth=null,firebaseReady=false;
+async function initFirebase(){
+  if(firebaseReady)return true;
+  if(FIREBASE_CONFIG.apiKey==="YOUR_API_KEY")return false;
+  try{
+    const{initializeApp}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js");
+    const{getDatabase}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");
+    const{getAuth,signInAnonymously}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js");
+    const app=initializeApp(FIREBASE_CONFIG);
+    db=getDatabase(app);auth=getAuth(app);
+    if(!auth.currentUser)await signInAnonymously(auth);
+    firebaseReady=true;return true;
+  }catch(e){console.error("Firebase initialization failed:",e);return false;}
+}
 async function fbSet(p,d){if(!firebaseReady)return;const{ref,set}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return set(ref(db,p),d);}
+async function fbUpdate(p,d){if(!firebaseReady)return;const{ref,update}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return update(ref(db,p),d);}
 async function fbTransaction(p,updater){if(!firebaseReady)return null;const{ref,runTransaction}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return runTransaction(ref(db,p),updater);}
 async function fbGet(p){if(!firebaseReady)return null;const{ref,get}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");const s=await get(ref(db,p));return s.exists()?s.val():null;}
 async function fbOnValue(p,cb){if(!firebaseReady)return()=>{};const{ref,onValue}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return onValue(ref(db,p),s=>{cb(s.exists()?s.val():null);});}
-
+async function fbOnAuth(cb){if(!auth)return()=>{};const{onAuthStateChanged}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js");return onAuthStateChanged(auth,cb);}
 // ─── COMPONENTS ───
 function StatusBadge({status,onClick,disabled}){const c=STATUS_CONFIG[status];return<button onClick={disabled?undefined:onClick} style={{background:c.bg,border:`1.5px solid ${c.border}`,color:c.text,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,cursor:disabled?"default":"pointer",fontFamily:"inherit",opacity:disabled?.7:1}}>{c.label}</button>;}
 function Input({value,onChange,placeholder,style,type="text"}){return<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 14px",fontSize:14,fontFamily:"inherit",width:"100%",outline:"none",...style}} onFocus={e=>e.target.style.borderColor="#D4A843"} onBlur={e=>e.target.style.borderColor="#3D2A6E"}/>;}
@@ -413,18 +401,18 @@ export default function HouseJobsApp(){
   const[archives,setArchives]=useState({});
   const[completionDraft,setCompletionDraft]=useState(null);
   const[proofNote,setProofNote]=useState("");
-  const[proofPhoto,setProofPhoto]=useState("");
-  const[proofPhotoBusy,setProofPhotoBusy]=useState(false);
   const[supplyStatus,setSupplyStatus]=useState("ok");
   const[supplyNote,setSupplyNote]=useState("");
-  const[issueForm,setIssueForm]=useState({category:"Maintenance",priority:"medium",location:"",description:"",photo:""});
-  const[issuePhotoBusy,setIssuePhotoBusy]=useState(false);
+  const[issueForm,setIssueForm]=useState({category:"Maintenance",priority:"medium",location:"",description:""});
   const[semesterStart,setSemesterStart]=useState("");
   const[semesterEnd,setSemesterEnd]=useState("");
   const[semesterExcluded,setSemesterExcluded]=useState("");
   const[archiveBusy,setArchiveBusy]=useState(false);
   // Setup
   const[adminUnlocked,setAdminUnlocked]=useState(false);
+  const[authUser,setAuthUser]=useState(null);
+  const[adminEmail,setAdminEmail]=useState(()=>{try{return localStorage.getItem("housejobs_admin_email")||"";}catch{return"";}});
+  const[adminLoading,setAdminLoading]=useState(false);
   const[pwInput,setPwInput]=useState("");
   const[pwError,setPwError]=useState(false);
   const[editName,setEditName]=useState("");
@@ -486,6 +474,10 @@ export default function HouseJobsApp(){
   useEffect(()=>{(async()=>{
     const connected=await initFirebase(); setFbConnected(connected);
     if(connected){
+      const initialUser=auth.currentUser;
+      const initialAdmin=!!initialUser&&!initialUser.isAnonymous&&(await fbGet(`admins/${initialUser.uid}`))===true;
+      setAuthUser(initialUser);setAdminUnlocked(initialAdmin);
+      fbOnAuth(async user=>{setAuthUser(user);const allowed=!!user&&!user.isAnonymous&&(await fbGet(`admins/${user.uid}`))===true;setAdminUnlocked(allowed);});
       const[cfg,asg,sunCfg,sunAsg,projCfg,projAsg,ann,settings,issues,archiveData]=await Promise.all([
         fbGet("config"),fbGet("assignments"),fbGet("sundayConfig"),fbGet("sundayAssignments"),
         fbGet("projectsConfig"),fbGet("weeklyProjects"),fbGet("announcements"),
@@ -557,13 +549,13 @@ export default function HouseJobsApp(){
     if(fbConnected)await fbSet("houseSettings",next);else await localStoreSet("housejobs:houseSettings",JSON.stringify(next));
   },[fbConnected]);
   const saveIssue=useCallback(async issue=>{
-    setHouseIssues(prev=>[issue,...prev.filter(x=>String(x.id)!==String(issue.id))]);
     if(fbConnected)await fbSet(`houseIssues/${issue.id}`,issue);
     else{
       const current=await localStoreGet("housejobs:houseIssues");
       const list=current?.value?JSON.parse(current.value):[];
       await localStoreSet("housejobs:houseIssues",JSON.stringify([issue,...list.filter(x=>String(x.id)!==String(issue.id))]));
     }
+    setHouseIssues(prev=>[issue,...prev.filter(x=>String(x.id)!==String(issue.id))]);
   },[fbConnected]);
   const removeIssue=useCallback(async id=>{
     setHouseIssues(prev=>prev.filter(x=>String(x.id)!==String(id)));
@@ -573,28 +565,25 @@ export default function HouseJobsApp(){
 
   function openCompletion(type,week,id,index,name){
     setCompletionDraft({type,week,id,index,name});
-    setProofNote("");setProofPhoto("");setSupplyStatus("ok");setSupplyNote("");
-  }
-  async function handleProofPhoto(file){
-    setProofPhotoBusy(true);
-    try{setProofPhoto(await compressImage(file));}catch(e){alert(e.message);}
-    setProofPhotoBusy(false);
+    setProofNote("");setSupplyStatus("ok");setSupplyNote("");
   }
   async function submitCompletion(){
     if(!completionDraft)return;
-    const proof={note:proofNote.trim(),photo:proofPhoto||"",supplyStatus,supplyNote:supplyNote.trim(),submittedBy:myName||"Unknown",submittedAt:new Date().toISOString()};
-    const{type,week,id,index}=completionDraft;
-    if(type==="weekly"){
-      const u=JSON.parse(JSON.stringify(assignments));
-      if(u[week]?.[id]){u[week][id]={...u[week][id],status:"done",proof};setAssignments(u);if(fbConnected)await fbSet(`assignments/${sanitizeKey(week)}/${sanitizeKey(id)}`,u[week][id]);else await saveA(u);}
-    }else if(type==="sunday"){
-      const u=JSON.parse(JSON.stringify(sundayAssignments));
-      if(u[week]?.jobs?.[id]){u[week].jobs[id]={...u[week].jobs[id],status:"done",proof};setSundayAssignments(u);if(fbConnected)await fbSet(`sundayAssignments/${sanitizeKey(week)}/jobs/${sanitizeKey(id)}`,u[week].jobs[id]);else await saveSunA(u);}
-    }else if(type==="project"){
-      const u=JSON.parse(JSON.stringify(weeklyProjects));
-      if(u[week]?.projects?.[index]){u[week].projects[index]={...u[week].projects[index],status:"done",completedBy:u[week].projects[index].claimedBy||myName,proof};setWeeklyProjects(u);if(fbConnected)await saveProjectItem(week,index,u[week].projects[index]);else await saveProjA(u);}
-    }
-    setCompletionDraft(null);
+    try{
+      const proof={note:proofNote.trim(),supplyStatus,supplyNote:supplyNote.trim(),submittedBy:myName||"Unknown",submittedUid:authUser?.uid||"local",submittedAt:new Date().toISOString()};
+      const{type,week,id,index}=completionDraft;
+      if(type==="weekly"){
+        const u=JSON.parse(JSON.stringify(assignments));
+        if(u[week]?.[id]){u[week][id]={...u[week][id],status:"done",proof};if(fbConnected)await fbUpdate(`assignments/${sanitizeKey(week)}/${sanitizeKey(id)}`,{status:"done",proof});else await saveA(u);setAssignments(u);}
+      }else if(type==="sunday"){
+        const u=JSON.parse(JSON.stringify(sundayAssignments));
+        if(u[week]?.jobs?.[id]){u[week].jobs[id]={...u[week].jobs[id],status:"done",proof};if(fbConnected)await fbUpdate(`sundayAssignments/${sanitizeKey(week)}/jobs/${sanitizeKey(id)}`,{status:"done",proof});else await saveSunA(u);setSundayAssignments(u);}
+      }else if(type==="project"){
+        const u=JSON.parse(JSON.stringify(weeklyProjects));
+        if(u[week]?.projects?.[index]){u[week].projects[index]={...u[week].projects[index],status:"done",completedBy:u[week].projects[index].claimedBy||myName,proof};if(fbConnected)await fbUpdate(`weeklyProjects/${sanitizeKey(week)}/projects/${index}`,{status:"done",completedBy:u[week].projects[index].completedBy,proof});else await saveProjA(u);setWeeklyProjects(u);}
+      }
+      setCompletionDraft(null);
+    }catch(e){console.error("Completion submission failed:",e);alert("Could not submit this job. Check your connection and try again.");}
   }
   async function reviewItem(item,approved){
     if(item.type==="weekly"){
@@ -623,10 +612,12 @@ export default function HouseJobsApp(){
     const blob=new Blob([JSON.stringify(archive,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`${archive.name||"house-jobs"}-archive.json`;a.click();URL.revokeObjectURL(url);
   }
-  function submitIssue(){
+  async function submitIssue(){
     if(!issueForm.description.trim())return;
-    const issue={...issueForm,id:Date.now(),reporter:myName||"Anonymous",status:"open",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
-    saveIssue(issue);setIssueForm({category:"Maintenance",priority:"medium",location:"",description:"",photo:""});
+    try{
+      const issue={...issueForm,id:Date.now(),reporter:myName||"Anonymous",reporterUid:authUser?.uid||"local",status:"open",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+      await saveIssue(issue);setIssueForm({category:"Maintenance",priority:"medium",location:"",description:""});
+    }catch(e){console.error("Issue submission failed:",e);alert("Could not submit this report. Check your connection and try again.");}
   }
   function updateIssue(id,changes){
     const issue=houseIssues.find(x=>String(x.id)===String(id));if(!issue)return;
@@ -651,7 +642,30 @@ export default function HouseJobsApp(){
     setMyName(name);try{localStorage.setItem("housejobs_myname",name);}catch{}
   }
 
-  async function checkPassword(){const h=await hashPassword(pwInput);if(h==="d85802bb9e9169949367f292bfdf4ca200139b4c44bc47a50700535f16fba13e"){setAdminUnlocked(true);setPwError(false);}else setPwError(true);}
+  async function checkPassword(){
+    if(!fbConnected||!auth||!adminEmail.trim()||!pwInput){setPwError(true);return;}
+    setAdminLoading(true);setPwError(false);
+    try{
+      const{signInWithEmailAndPassword}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js");
+      const credential=await signInWithEmailAndPassword(auth,adminEmail.trim(),pwInput);
+      const allowed=(await fbGet(`admins/${credential.user.uid}`))===true;
+      if(credential.user.isAnonymous||!allowed){
+        const{signOut,signInAnonymously}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js");
+        await signOut(auth);await signInAnonymously(auth);throw new Error("This account is not on the manager allowlist");
+      }
+      try{localStorage.setItem("housejobs_admin_email",adminEmail.trim());}catch{}
+      setAuthUser(credential.user);setAdminUnlocked(true);setPwInput("");
+    }catch(e){console.error("Manager sign-in failed:",e);setPwError(true);}
+    setAdminLoading(false);
+  }
+  async function lockAdmin(){
+    setAdminUnlocked(false);setPwInput("");
+    if(!auth)return;
+    try{
+      const{signOut,signInAnonymously}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js");
+      await signOut(auth);const credential=await signInAnonymously(auth);setAuthUser(credential.user);
+    }catch(e){console.error("Could not return to member session:",e);}
+  }
 
   const currentWeek=weeks[currentWeekIdx]||"";
   const weekData=assignments[currentWeek]||{};
@@ -663,7 +677,7 @@ export default function HouseJobsApp(){
     if(!u[week]?.[jobId])return;
     const c=u[week][jobId].status;
     if(!isAdmin&&c==="pending"){openCompletion("weekly",week,jobId,null,jobs.find(j=>j.id===jobId)?.name||"Weekly job");return;}
-    const next=isAdmin?STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length]:c==="pending"?"done":c==="done"?"pending":c;
+    const next=isAdmin?STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length]:c;
     if(next===c)return;
     u[week][jobId].status=next;
     setAssignments(u);
@@ -773,7 +787,7 @@ export default function HouseJobsApp(){
     if(!u[week]?.jobs?.[jobId])return;
     const c=u[week].jobs[jobId].status;
     if(!isAdmin&&c==="pending"){openCompletion("sunday",week,jobId,null,sundayJobs.find(j=>j.id===jobId)?.name||"Sunday job");return;}
-    const next=isAdmin?STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length]:c==="pending"?"done":c==="done"?"pending":c;
+    const next=isAdmin?STATUS_CYCLE[(STATUS_CYCLE.indexOf(c)+1)%STATUS_CYCLE.length]:c;
     if(next===c)return;
     u[week].jobs[jobId].status=next;
     setSundayAssignments(u);
@@ -822,7 +836,7 @@ export default function HouseJobsApp(){
     if(!name?.trim()||!fbConnected){
       const u=JSON.parse(JSON.stringify(weeklyProjects));
       if(u[week]?.projects?.[projIdx]?.status==="available"){
-        u[week].projects[projIdx]={...u[week].projects[projIdx],status:"claimed",claimedBy:name};
+        u[week].projects[projIdx]={...u[week].projects[projIdx],status:"claimed",claimedBy:name,claimedUid:authUser?.uid||"local"};
         setWeeklyProjects(u);saveProjA(u);
       }
       return;
@@ -830,7 +844,7 @@ export default function HouseJobsApp(){
     const path=`weeklyProjects/${sanitizeKey(week)}/projects/${projIdx}`;
     const result=await fbTransaction(path,current=>{
       if(!current||current.status!=="available")return;
-      return {...current,status:"claimed",claimedBy:name};
+      return {...current,status:"claimed",claimedBy:name,claimedUid:authUser?.uid||auth?.currentUser?.uid||""};
     });
     if(result?.committed&&result.snapshot){
       const claimed=result.snapshot.val();
@@ -858,7 +872,9 @@ export default function HouseJobsApp(){
   function unclaimProject(week,projIdx){
     const u=JSON.parse(JSON.stringify(weeklyProjects));
     if(u[week]?.projects?.[projIdx]){
-      u[week].projects[projIdx]={...u[week].projects[projIdx],status:"available",claimedBy:null,completedBy:null};
+      const current=u[week].projects[projIdx];
+      if(!adminUnlocked&&current.claimedUid!==authUser?.uid)return;
+      u[week].projects[projIdx]={...current,status:"available",claimedBy:null,claimedUid:null,completedBy:null};
       setWeeklyProjects(u);
       if(fbConnected)saveProjectItem(week,projIdx,u[week].projects[projIdx]);else saveProjA(u);
     }
@@ -958,6 +974,7 @@ export default function HouseJobsApp(){
   .manager-grid,.stat-grid{grid-template-columns:1fr 1fr}
   .hm-wide{grid-column:1/-1}
   input,textarea,select{font-size:16px!important}
+  .manager-login-grid{grid-template-columns:1fr!important}
 }
 @media(min-width:768px){
   .app-shell{max-width:900px;padding:0 20px}
@@ -1259,7 +1276,7 @@ export default function HouseJobsApp(){
             </div>;
           })()}
           </>;})()}
-          {!adminUnlocked&&<div style={{background:"#261850",borderRadius:10,padding:"10px 14px",border:"1px solid #3D2A6E",marginBottom:16,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:12,color:"#64748B"}}>🔒 HM access for edits. </span><Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Password" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={checkPassword}>Unlock</SmallBtn></div>}
+          {!adminUnlocked&&<div className="manager-login-grid" style={{background:"#261850",borderRadius:10,padding:"10px 14px",border:"1px solid #3D2A6E",marginBottom:16,display:"grid",gridTemplateColumns:"1fr 1fr auto",alignItems:"center",gap:8}}><Input type="email" value={adminEmail} onChange={v=>{setAdminEmail(v);setPwError(false);}} placeholder="Manager email" style={{padding:"7px 9px",fontSize:12}}/><Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Password" style={{padding:"7px 9px",fontSize:12}}/><SmallBtn onClick={checkPassword}>{adminLoading?"...":"Unlock"}</SmallBtn></div>}
           <div className="job-grid">
             {sundayJobs.map((job,i)=>{const data=sunWeekData.jobs?.[job.id];if(!data)return null;const isEd=sundayEditingJob===job.id;return(
               <div key={job.id} className="fu" style={{background:"#261850",borderRadius:12,padding:"14px 16px",border:"1px solid #3D2A6E",animationDelay:`${i*.03}s`}}>
@@ -1535,14 +1552,10 @@ export default function HouseJobsApp(){
             </div>
             <Input value={issueForm.location} onChange={v=>setIssueForm({...issueForm,location:v})} placeholder="Location, e.g. 2nd floor bathroom" style={{marginBottom:8}}/>
             <textarea value={issueForm.description} onChange={e=>setIssueForm({...issueForm,description:e.target.value})} placeholder={issueForm.category==="Supplies"?"What supply is low or missing?":"What is wrong?"} rows={3} style={{width:"100%",resize:"vertical",background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:8}}/>
-            {issueForm.photo&&<img src={issueForm.photo} alt="Issue preview" style={{width:"100%",maxHeight:180,objectFit:"cover",borderRadius:8,marginBottom:8}}/>}
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-              <label style={{background:"#8B5CF618",border:"1px solid #8B5CF650",color:"#A78BFA",borderRadius:6,padding:"7px 10px",fontSize:12,fontWeight:600,cursor:"pointer"}}>
-                {issuePhotoBusy?"Processing...":issueForm.photo?"Change photo":"Add photo"}
-                <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;setIssuePhotoBusy(true);try{const photo=await compressImage(file);setIssueForm(prev=>({...prev,photo}));}catch(err){alert(err.message);}setIssuePhotoBusy(false);}}/>
-              </label>
+              <span style={{fontSize:11,color:"#64748B"}}>Add enough detail for the manager to find and fix it.</span>
               <div style={{flex:1}}/>
-              <button onClick={submitIssue} disabled={!issueForm.description.trim()||issuePhotoBusy} style={{background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#140E2A",borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:!issueForm.description.trim()?0.5:1}}>Submit report</button>
+              <button onClick={submitIssue} disabled={!issueForm.description.trim()} style={{background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#140E2A",borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:!issueForm.description.trim()?0.5:1}}>Submit report</button>
             </div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -1627,14 +1640,15 @@ export default function HouseJobsApp(){
         {view==="manager"&&!adminUnlocked&&<div className="fu" style={{maxWidth:340,margin:"40px auto",textAlign:"center"}}>
           <div style={{fontSize:34,marginBottom:12}}>🛠️</div><h2 style={{fontSize:18,color:"#F1F5F9",marginBottom:6}}>House Manager Dashboard</h2>
           <p style={{fontSize:13,color:"#64748B",marginBottom:18}}>Unlock to review work and manage the house.</p>
-          <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="House manager password" style={{textAlign:"center",marginBottom:10}}/>
-          {pwError&&<p style={{fontSize:12,color:"#EF4444",marginBottom:10}}>Wrong password.</p>}
-          <button onClick={checkPassword} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#140E2A",borderRadius:10,padding:"13px",fontWeight:700,cursor:"pointer"}}>Unlock dashboard</button>
+          <Input type="email" value={adminEmail} onChange={v=>{setAdminEmail(v);setPwError(false);}} placeholder="Manager email" style={{textAlign:"center",marginBottom:8}}/>
+          <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Manager password" style={{textAlign:"center",marginBottom:10}}/>
+          {pwError&&<p style={{fontSize:12,color:"#EF4444",marginBottom:10}}>Could not sign in. Check the manager account and password.</p>}
+          <button onClick={checkPassword} disabled={adminLoading} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#140E2A",borderRadius:10,padding:"13px",fontWeight:700,cursor:"pointer",opacity:adminLoading?.6:1}}>{adminLoading?"Signing in...":"Unlock dashboard"}</button>
         </div>}
         {view==="manager"&&adminUnlocked&&<div className="fu">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
             <div><h2 style={{fontSize:19,fontWeight:700,color:"#F8FAFC"}}>House Manager</h2><p style={{fontSize:12,color:"#64748B",marginTop:2}}>Everything that needs your attention</p></div>
-            <button onClick={()=>{setAdminUnlocked(false);setPwInput("");}} style={{background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:7,padding:"6px 9px",fontSize:11,cursor:"pointer"}}>🔒 Lock</button>
+            <button onClick={lockAdmin} style={{background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:7,padding:"6px 9px",fontSize:11,cursor:"pointer"}}>🔒 Lock</button>
           </div>
           <div className="stat-grid" style={{marginBottom:14}}>
             {[{n:verificationQueue.length,l:"Awaiting review",c:"#D4A843"},{n:overdueItems.length,l:"Overdue",c:"#EF4444"},{n:openIssues.length,l:"Open issues",c:"#F59E0B"},{n:supplyReports.length,l:"Supply alerts",c:"#8B5CF6"}].map(x=><div key={x.l} className="hm-card" style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:700,color:x.c,fontFamily:"'Space Mono',monospace"}}>{x.n}</div><div style={{fontSize:11,color:"#94A3B8",marginTop:3}}>{x.l}</div></div>)}
@@ -1692,15 +1706,16 @@ export default function HouseJobsApp(){
           <div style={{width:64,height:64,borderRadius:16,background:"#F59E0B18",border:"1px solid #F59E0B40",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",fontSize:28}}>🔒</div>
           <h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9",marginBottom:6}}>House Manager Access</h2>
           <p style={{fontSize:13,color:"#64748B",marginBottom:24}}>Enter the admin password to edit settings.</p>
-          <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Enter password..." style={{textAlign:"center",fontSize:16,letterSpacing:"0.1em",marginBottom:12,borderColor:pwError?"#EF4444":"#3D2A6E"}}/>
-          {pwError&&<p style={{fontSize:12,color:"#EF4444",marginBottom:12}}>Wrong password.</p>}
-          <button onClick={checkPassword} style={{width:"100%",background:"linear-gradient(135deg,#F59E0B,#D97706)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Unlock</button>
+          <Input type="email" value={adminEmail} onChange={v=>{setAdminEmail(v);setPwError(false);}} placeholder="Manager email" style={{textAlign:"center",marginBottom:8,borderColor:pwError?"#EF4444":"#3D2A6E"}}/>
+          <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Manager password" style={{textAlign:"center",fontSize:16,letterSpacing:"0.1em",marginBottom:12,borderColor:pwError?"#EF4444":"#3D2A6E"}}/>
+          {pwError&&<p style={{fontSize:12,color:"#EF4444",marginBottom:12}}>Could not sign in. Check the manager account and password.</p>}
+          <button onClick={checkPassword} disabled={adminLoading} style={{width:"100%",background:"linear-gradient(135deg,#F59E0B,#D97706)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:adminLoading?.6:1}}>{adminLoading?"Signing in...":"Unlock"}</button>
         </div>}
 
         {view==="setup"&&adminUnlocked&&<div className="fu">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
             <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9"}}>Weekly Setup</h2>
-            <button onClick={()=>{setAdminUnlocked(false);setPwInput("");}} style={{background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🔒 Lock</button>
+            <button onClick={lockAdmin} style={{background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🔒 Lock</button>
           </div>
           <div style={{marginBottom:20}}><label style={{fontSize:12,color:"#94A3B8",fontWeight:600,display:"block",marginBottom:6}}>SEMESTER NAME</label><Input value={semesterName} onChange={setSemesterName} placeholder="e.g. Spring 2027"/></div>
           <div style={{display:"flex",gap:6,marginBottom:16}}>
@@ -1840,10 +1855,8 @@ export default function HouseJobsApp(){
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:14}}><div><div style={{fontSize:10,color:"#D4A843",fontWeight:700,letterSpacing:".08em"}}>SUBMIT FOR VERIFICATION</div><h2 style={{fontSize:18,color:"#F8FAFC",marginTop:4}}>{completionDraft.name}</h2><p style={{fontSize:11,color:"#64748B",marginTop:3}}>{completionDraft.week}</p></div><button onClick={()=>setCompletionDraft(null)} aria-label="Close" style={{background:"none",border:"none",color:"#94A3B8",fontSize:24,cursor:"pointer",lineHeight:1}}>×</button></div>
             {!myName&&<div style={{background:"#F59E0B12",border:"1px solid #F59E0B40",borderRadius:8,padding:9,fontSize:11,color:"#F59E0B",marginBottom:10}}>Choose your name in the Me tab so the submission records who completed it.</div>}
             <textarea value={proofNote} onChange={e=>setProofNote(e.target.value)} placeholder="Completion note (optional)" rows={3} style={{width:"100%",resize:"vertical",background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:9}}/>
-            {proofPhoto&&<div style={{position:"relative",marginBottom:9}}><img src={proofPhoto} alt="Completion proof preview" style={{width:"100%",maxHeight:230,objectFit:"cover",borderRadius:9}}/><button onClick={()=>setProofPhoto("")} style={{position:"absolute",right:7,top:7,background:"#140E2ACC",border:"1px solid #EF444480",color:"#FCA5A5",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>Remove</button></div>}
-            <label style={{display:"block",textAlign:"center",background:"#8B5CF618",border:"1px solid #8B5CF650",color:"#A78BFA",borderRadius:8,padding:"10px",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:12}}>{proofPhotoBusy?"Processing photo...":proofPhoto?"Replace photo":"Take or add proof photo"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(file)handleProofPhoto(file);}}/></label>
             <div style={{background:"#1A1040",borderRadius:9,padding:10,marginBottom:12}}><label style={{fontSize:11,color:"#94A3B8",display:"block",marginBottom:6}}>Supplies for this job</label><select value={supplyStatus} onChange={e=>setSupplyStatus(e.target.value)} style={{width:"100%",background:"#261850",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:7,padding:"9px",fontFamily:"inherit",marginBottom:supplyStatus==="ok"?0:8}}><option value="ok">All stocked</option><option value="low">Running low</option><option value="out">Out of supplies</option></select>{supplyStatus!=="ok"&&<Input value={supplyNote} onChange={setSupplyNote} placeholder="What needs restocking?"/>}</div>
-            <button onClick={submitCompletion} disabled={proofPhotoBusy} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#140E2A",borderRadius:10,padding:"13px",fontSize:14,fontWeight:800,cursor:"pointer",opacity:proofPhotoBusy?.55:1}}>Mark done and send to manager</button>
+            <button onClick={submitCompletion} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#140E2A",borderRadius:10,padding:"13px",fontSize:14,fontWeight:800,cursor:"pointer"}}>Mark done and send to manager</button>
           </div>
         </div>}
 
