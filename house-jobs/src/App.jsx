@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 
 /*
- * HOUSE JOBS — SPARK SECURITY BUILD (Firebase Auth enabled, Storage disabled)
+ * HOUSE JOBS — HOUSE HQ OVERHAUL v2 (Spark, Firebase Auth, no Storage)
  * With Sunday Cleaning + House Projects
  */
 
@@ -358,17 +358,57 @@ async function fbOnValue(p,cb){if(!firebaseReady)return()=>{};const{ref,onValue}
 async function fbOnAuth(cb){if(!auth)return()=>{};const{onAuthStateChanged}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js");return onAuthStateChanged(auth,cb);}
 // ─── COMPONENTS ───
 function StatusBadge({status,onClick,disabled}){const c=STATUS_CONFIG[status];return<button onClick={disabled?undefined:onClick} style={{background:c.bg,border:`1.5px solid ${c.border}`,color:c.text,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,cursor:disabled?"default":"pointer",fontFamily:"inherit",opacity:disabled?.7:1}}>{c.label}</button>;}
-function Input({value,onChange,placeholder,style,type="text"}){return<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 14px",fontSize:14,fontFamily:"inherit",width:"100%",outline:"none",...style}} onFocus={e=>e.target.style.borderColor="#D4A843"} onBlur={e=>e.target.style.borderColor="#3D2A6E"}/>;}
+function Input({value,onChange,placeholder,style,type="text"}){return<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 14px",fontSize:14,fontFamily:"inherit",width:"100%",outline:"none",...style}} onFocus={e=>e.target.style.borderColor="#D4A843"} onBlur={e=>e.target.style.borderColor="#364258"}/>;}
 function SmallBtn({children,onClick,color="#D4A843"}){return<button onClick={onClick} style={{background:`${color}18`,border:`1px solid ${color}50`,color,borderRadius:6,padding:"5px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{children}</button>;}
-function SyncDot({connected}){return<div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:7,height:7,borderRadius:"50%",background:connected?"#D4A843":"#EF4444",boxShadow:connected?"0 0 6px #D4A84380":"0 0 6px #EF444480"}}/><span style={{fontSize:10,color:"#64748B",fontFamily:"'Space Mono',monospace"}}>{connected?"LIVE":"LOCAL"}</span></div>;}
+function SyncDot({connected}){return<div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:7,height:7,borderRadius:"50%",background:connected?"#D4A843":"#EF4444",boxShadow:connected?"0 0 6px #D4A84380":"0 0 6px #EF444480"}}/><span style={{fontSize:10,color:"#A0AEC3",fontFamily:"'Space Mono',monospace"}}>{connected?"LIVE":"LOCAL"}</span></div>;}
 function GroupBadge({group,bothGroups}){if(bothGroups)return<span style={{fontSize:11,fontWeight:700,color:"#F59E0B",background:"#F59E0B18",padding:"2px 8px",borderRadius:4,border:"1px solid #F59E0B30"}}>BOTH GROUPS</span>;const e=group==="even";return<span style={{fontSize:11,fontWeight:700,color:e?"#8B5CF6":"#06B6D4",background:e?"#8B5CF618":"#06B6D418",padding:"2px 8px",borderRadius:4,border:`1px solid ${e?"#8B5CF630":"#06B6D430"}`}}>{e?"EVEN PINS":"ODD PINS"}</span>;}
 function DiffBadge({d}){const c=DIFF_COLORS[d]||DIFF_COLORS.easy;return<span style={{fontSize:10,fontWeight:700,color:c.color,background:c.bg,padding:"1px 7px",borderRadius:4,border:`1px solid ${c.border}`}}>{d==="easy"?"1 PT":"2 PTS"}</span>;}
+
+
+const HOUSE_TABS=[{key:"me",label:"My jobs",icon:"✓"},{key:"house",label:"House",icon:"⌂"},{key:"projects",label:"Projects",icon:"+"},{key:"issues",label:"Report",icon:"!"},{key:"manager",label:"Manager",icon:"⚙"}];
+const TASK_LABELS={pending:"To do",claimed:"In progress",done:"In review",verified:"Verified",missed:"Missed"};
+
+function TaskFocus({tasks,name,week,onComplete,onProjects}){
+  const [filter,setFilter]=useState("active"),[query,setQuery]=useState("");
+  const [checks,setChecks]=useState(()=>{try{return JSON.parse(localStorage.getItem("housejobs:checklists:v1")||"{}");}catch{return{};}});
+  const [notice,setNotice]=useState("");
+  const active=tasks.filter(t=>["pending","claimed"].includes(t.entry.status));
+  const shown=tasks.filter(t=>(filter==="all"||filter==="active"&&["pending","claimed"].includes(t.entry.status)||filter==="review"&&t.entry.status==="done"||filter==="verified"&&t.entry.status==="verified")&&(t.name+" "+t.desc).toLowerCase().includes(query.toLowerCase()));
+  const reviewed=tasks.filter(t=>t.entry.status==="verified").length;
+  function toggle(key){
+    const next={...checks,[key]:!checks[key]};setChecks(next);
+    try{localStorage.setItem("housejobs:checklists:v1",JSON.stringify(next));}catch{setNotice("Checklist cannot be saved on this device.");}
+  }
+  async function copy(){
+    const summary=[name+" — "+week,...tasks.map(t=>TASK_LABELS[t.entry.status]+": "+t.name+(t.due?" · "+formatDue(t.due):""))].join("\n");
+    try{await navigator.clipboard.writeText(summary);setNotice("Your job list was copied.");}catch{setNotice("Copy is unavailable in this browser.");}
+  }
+  return <section className="focus-workspace">
+    <div className="focus-hero"><div className="eyebrow">YOUR WEEK, AT A GLANCE</div><h2>{active.length?active.length+" thing"+(active.length===1?"":"s")+" left to do.":tasks.length?"You're caught up.":"No assignments this week."}</h2><p>{tasks.length?reviewed+" verified · "+tasks.filter(t=>t.entry.status==="done").length+" awaiting review":"Check the house schedule or pick up a project."}</p><div className="progress-track"><div style={{width:(tasks.length?reviewed/tasks.length*100:0)+"%"}}/></div><div className="focus-actions"><button onClick={copy}>Copy my list</button><button onClick={onProjects}>Find a project ↗</button></div></div>
+    <div className="task-toolbar"><label className="sr-only" htmlFor="task-search">Search your jobs</label><input id="task-search" placeholder="Search your jobs…" value={query} onChange={e=>setQuery(e.target.value)}/><div className="filter-pills">{[["active","To do"],["review","In review"],["verified","Verified"],["all","All"]].map(([key,label])=><button key={key} aria-pressed={filter===key} onClick={()=>setFilter(key)}>{label}</button>)}</div></div>
+    <div role="status" className="quiet">{notice}</div>
+    {!shown.length&&<div className="empty-card">{query?"No jobs match that search.":filter==="active"?"Nothing left in your to-do list. Submitted jobs are under In review.":"No jobs in this view yet."}</div>}
+    {shown.map(t=>{
+      const steps=String(t.desc||"").split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean);
+      const key=JSON.stringify([name,week,t.type,t.id]);
+      const actionable=["pending","claimed"].includes(t.entry.status);
+      const late=actionable&&t.due&&t.due<new Date();
+      return <article className="task-card" key={key}><div className="task-top"><span className="eyebrow">{t.type==="sunday"?"SUNDAY CLEANING":t.type==="project"?"HOUSE PROJECT":"WEEKLY JOB"}</span><span className={"task-status "+t.entry.status}>{TASK_LABELS[t.entry.status]||t.entry.status}</span></div><h3>{t.name}</h3><p className={late?"late":"quiet"}>{t.due?(late?"Overdue · ":"Due ")+formatDue(t.due):"No deadline set"}</p>{t.entry.assigned?.length>1&&<p className="quiet">Team: {t.entry.assigned.join(", ")}</p>}{t.entry.rejectionNote&&actionable&&<p className="return-note">Manager note: {t.entry.rejectionNote}</p>}
+      {steps.length>0&&<details><summary>Cleaning checklist · {steps.filter((x,i)=>checks[key+":"+i+":"+x]).length}/{steps.length}</summary><p className="quiet">Personal checklist, saved on this device. Submit below when the job is done.</p>{steps.map((step,i)=><label className="check-row" key={i}><input type="checkbox" checked={!!checks[key+":"+i+":"+step]} onChange={()=>toggle(key+":"+i+":"+step)}/><span>{step}</span></label>)}</details>}
+      {actionable?<button className="primary-action" onClick={()=>onComplete(t)}>Submit completed work →</button>:<p className="quiet">{t.entry.status==="done"?"Submitted. Your house manager will review it.":t.entry.status==="verified"?"Checked and approved by your house manager.":"Contact your house manager about this assignment."}</p>}
+      </article>;
+    })}
+  </section>;
+}
 
 // ─── MAIN ───
 export default function HouseJobsApp(){
   const[loading,setLoading]=useState(true);
   const[fbConnected,setFbConnected]=useState(false);
   const[view,setView]=useState("me");
+  const[reviewFilter,setReviewFilter]=useState("all");
+  const[briefNotice,setBriefNotice]=useState("");
+  const[completionBusy,setCompletionBusy]=useState(false);
   const[semesterName,setSemesterName]=useState("Fall 2026");
   const[brothers,setBrothers]=useState(DEFAULT_BROTHERS);
   const[jobs,setJobs]=useState(DEFAULT_JOBS);
@@ -519,7 +559,7 @@ export default function HouseJobsApp(){
         if(settings?.value)setHouseSettings({...DEFAULT_HOUSE_SETTINGS,...JSON.parse(settings.value)});
         if(issues?.value)setHouseIssues(JSON.parse(issues.value));
         if(archiveData?.value)setArchives(JSON.parse(archiveData.value));
-        setCurrentWeekIdx(detectCurrentWeek(DEFAULT_WEEKS));
+        setCurrentWeekIdx(detectCurrentWeek(cfg?.value?(JSON.parse(cfg.value).weeks||DEFAULT_WEEKS):DEFAULT_WEEKS));
       }catch{setAssignments(generateAssignments(DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_WEEKS));setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS));setWeeklyProjects(generateWeeklyProjects(DEFAULT_PROJECTS,DEFAULT_WEEKS));}
     }
     setLoading(false);
@@ -568,7 +608,8 @@ export default function HouseJobsApp(){
     setProofNote("");setSupplyStatus("ok");setSupplyNote("");
   }
   async function submitCompletion(){
-    if(!completionDraft)return;
+    if(!completionDraft||completionBusy)return;
+    setCompletionBusy(true);
     try{
       const proof={note:proofNote.trim(),supplyStatus,supplyNote:supplyNote.trim(),submittedBy:myName||"Unknown",submittedUid:authUser?.uid||"local",submittedAt:new Date().toISOString()};
       const{type,week,id,index}=completionDraft;
@@ -583,7 +624,7 @@ export default function HouseJobsApp(){
         if(u[week]?.projects?.[index]){u[week].projects[index]={...u[week].projects[index],status:"done",completedBy:u[week].projects[index].claimedBy||myName,proof};if(fbConnected)await fbUpdate(`weeklyProjects/${sanitizeKey(week)}/projects/${index}`,{status:"done",completedBy:u[week].projects[index].completedBy,proof});else await saveProjA(u);setWeeklyProjects(u);}
       }
       setCompletionDraft(null);
-    }catch(e){console.error("Completion submission failed:",e);alert("Could not submit this job. Check your connection and try again.");}
+    }catch(e){console.error("Completion submission failed:",e);alert("Could not submit this job. Check your connection and try again.");}finally{setCompletionBusy(false);}
   }
   async function reviewItem(item,approved){
     if(item.type==="weekly"){
@@ -952,22 +993,37 @@ export default function HouseJobsApp(){
     return{name,total:stats[name]?.total||0,sunday,kitchen,bathrooms,missed:stats[name]?.missed||0,projectPoints:projectStats[name]?.points||0};
   }).sort((a,b)=>(b.total+b.sunday)-(a.total+a.sunday)),[brotherNames,assignments,sundayAssignments,stats,projectStats]);
 
-  if(loading)return<div style={{fontFamily:"'DM Sans',sans-serif",background:"#140E2A",color:"#8B7BAA",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}><div style={{width:28,height:28,border:"3px solid #3D2A6E",borderTop:"3px solid #D4A843",borderRadius:"50%",animation:"spin .8s linear infinite"}}/><span>Connecting...</span><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
+  const personalTasks=[
+    ...jobs.filter(j=>weekData[j.id]?.assigned?.includes(myName)).map(j=>({...j,type:"weekly",entry:weekData[j.id],due:getDueDate(currentWeek,"weekly",houseSettings)})),
+    ...sundayJobs.filter(j=>sunWeekData.jobs?.[j.id]?.assigned?.includes(myName)).map(j=>({...j,type:"sunday",entry:sunWeekData.jobs[j.id],due:getDueDate(currentWeek,"sunday",houseSettings)})),
+    ...(projWeekData.projects||[]).map((p,index)=>({...p,type:"project",entry:p,index,due:null})).filter(p=>p.claimedBy===myName)
+  ];
+  const recentActivity=[
+    ...Object.entries(assignments).flatMap(([week,data])=>Object.entries(data||{}).map(([id,entry])=>({week,name:jobs.find(j=>j.id===id)?.name||id,entry}))),
+    ...Object.entries(sundayAssignments).flatMap(([week,data])=>Object.entries(data?.jobs||{}).map(([id,entry])=>({week,name:sundayJobs.find(j=>j.id===id)?.name||id,entry}))),
+    ...Object.entries(weeklyProjects).flatMap(([week,data])=>(data.projects||[]).map(entry=>({week,name:entry.name,entry})))
+  ].filter(t=>t.entry?.proof?.submittedAt&&["done","verified"].includes(t.entry.status)).sort((a,b)=>String(b.entry.proof.submittedAt).localeCompare(String(a.entry.proof.submittedAt))).slice(0,8);
+  async function copyManagerBrief(){
+    const text=["SigEp house brief — "+currentWeek,verificationQueue.length+" awaiting review · "+overdueItems.length+" overdue · "+openIssues.length+" open issues","","OVERDUE",...overdueItems.slice(0,20).map(t=>t.week+" — "+t.name+": "+(t.assigned||[]).join(", ")),"","OPEN ISSUES",...openIssues.slice(0,10).map(t=>t.priority+" — "+t.description)].join("\n");
+    try{await navigator.clipboard.writeText(text);setBriefNotice("Brief copied. Review it before sharing.");}catch{setBriefNotice("Clipboard unavailable. Try your normal browser.");}
+  }
+
+  if(loading)return<div style={{fontFamily:"'DM Sans',sans-serif",background:"#10131C",color:"#A8B4CB",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}><div style={{width:28,height:28,border:"3px solid #364258",borderTop:"3px solid #D4A843",borderRadius:"50%",animation:"spin .8s linear infinite"}}/><span>Connecting...</span><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
 
   return(
-    <div className="app-shell" style={{fontFamily:"'DM Sans','Segoe UI',sans-serif",background:"#140E2A",color:"#E2E8F0",minHeight:"100vh",margin:"0 auto"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#3D2A6E;border-radius:4px}@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes spin{to{transform:rotate(360deg)}}.fu{animation:fadeUp .3s ease both}.ch{transition:transform .15s,box-shadow .15s}.ch:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.3)}select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+    <div className="app-shell" style={{fontFamily:"'DM Sans','Segoe UI',sans-serif",background:"#10131C",color:"#E2E8F0",minHeight:"100vh",margin:"0 auto"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#364258;border-radius:4px}@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes spin{to{transform:rotate(360deg)}}.fu{animation:fadeUp .3s ease both}.ch{transition:transform .15s,box-shadow .15s}.ch:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.3)}select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
 .app-shell{max-width:520px}
 .job-grid{display:flex;flex-direction:column;gap:8px}
 .roster-grid{display:flex;flex-direction:column;gap:6px}
 .board-list{display:flex;flex-direction:column;gap:6px}
 .manager-grid,.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.hm-card{background:#261850;border:1px solid #3D2A6E;border-radius:12px;padding:14px;min-width:0}
+.hm-card{background:#1C2332;border:1px solid #364258;border-radius:12px;padding:14px;min-width:0}
 .scroll-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x proximity}
 .scroll-row>*{scroll-snap-align:start}
 .nav-tab{min-width:64px!important}
 .proof-modal{position:fixed;inset:0;z-index:200;background:#080512CC;display:flex;align-items:flex-end;justify-content:center;padding:14px}
-.proof-sheet{width:min(100%,500px);max-height:92vh;overflow-y:auto;background:#261850;border:1px solid #D4A84355;border-radius:18px 18px 12px 12px;padding:18px;box-shadow:0 -16px 45px #0008}
+.proof-sheet{width:min(100%,500px);max-height:92vh;overflow-y:auto;background:#1C2332;border:1px solid #D4A84355;border-radius:18px 18px 12px 12px;padding:18px;box-shadow:0 -16px 45px #0008}
 .header-inner{max-width:100%}
 @media(max-width:767px){
   .app-shell{padding-bottom:24px}
@@ -992,37 +1048,94 @@ export default function HouseJobsApp(){
 }
 `}</style>
 
+
+      <style>{`
+body{background:#10131c}
+.app-shell{background:#10131c!important;color:#edf0f7!important;max-width:1120px}
+.app-shell button,.app-shell input,.app-shell textarea,.app-shell select{font-family:inherit}
+.app-shell button{touch-action:manipulation}
+.app-shell button:focus-visible,.app-shell input:focus-visible,.app-shell summary:focus-visible{outline:3px solid #e6bd65;outline-offset:3px}
+.app-shell button:disabled{opacity:.5;cursor:wait}
+.primary-nav{display:flex;gap:8px;padding:12px 20px;background:#10131c;border-bottom:1px solid #303748}
+.primary-nav button{position:relative;flex:1;min-height:54px;border:1px solid transparent;border-radius:12px;background:transparent;color:#aeb9cf;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:9px}
+.primary-nav button[aria-current]{background:#e6bd65;color:#191714}
+.primary-nav button>span{font-size:20px}
+.primary-nav small{background:#a82240;color:white;border-radius:20px;padding:2px 5px}
+.focus-hero{border:1px solid #485062;background:radial-gradient(ellipse at top right,#51402d,transparent 65%),#1b2130;border-radius:22px;padding:26px;margin-bottom:20px}
+.eyebrow{font-size:10px;letter-spacing:.14em;color:#e6bd65;font-weight:800}
+.focus-hero h2{font-size:clamp(25px,5vw,36px);line-height:1.14;letter-spacing:-.04em;margin:12px 0}
+.focus-hero p,.manager-brief p{font-size:13px;line-height:1.6;color:#bac4d6}
+.progress-track{height:5px;background:#394051;border-radius:10px;margin:22px 0;overflow:hidden}
+.progress-track>div{height:100%;background:#e6bd65}
+.focus-actions{display:flex;gap:10px;flex-wrap:wrap}
+.focus-actions button,.manager-brief button{background:#272e3e;color:#f4e5c4;border:1px solid #566079;border-radius:10px;padding:11px 16px;cursor:pointer;min-height:44px}
+.task-toolbar input{width:100%;background:#191f2c;color:#f2f5fc;border:1px solid #404b61;border-radius:12px;padding:14px;font-size:16px;margin-bottom:12px}
+.filter-pills{display:flex;gap:6px;overflow:auto;margin:10px 0 18px;padding-bottom:3px}
+.filter-pills button{white-space:nowrap;border:1px solid #485066;background:#1a2030;color:#bbc6dd;border-radius:30px;min-height:44px;padding:10px 15px;cursor:pointer}
+.filter-pills button[aria-pressed=true]{background:#eee5d2;color:#241f19;border-color:#eee5d2}
+.task-card{background:#1b2130;border:1px solid #394357;border-radius:16px;padding:20px;margin-bottom:12px}
+.task-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.task-card h3{font-size:20px;letter-spacing:-.02em;margin:14px 0 8px}
+.task-status{font-size:11px;padding:5px 8px;background:#30394c;color:#c8d4ef;border-radius:6px;white-space:nowrap}
+.task-status.verified{background:#183c35;color:#9ae4bf}.task-status.done{background:#3d3454;color:#dfc9ff}
+.quiet{color:#a6b3cb;font-size:12px;line-height:1.6;margin:6px 0}
+.late,.return-note{color:#ffb0ad;font-size:12px;line-height:1.5}
+.return-note{background:#4a252e;padding:10px;border-radius:8px;margin:10px 0}
+.task-card details{margin:14px 0;border-top:1px solid #364054;padding-top:12px}
+.task-card summary{cursor:pointer;font-size:13px;color:#e4c888;min-height:36px}
+.check-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;color:#dae1ef;font-size:14px;line-height:1.5}
+.check-row input{width:21px;height:21px;flex-shrink:0;accent-color:#e6bd65}
+.primary-action{width:100%;border:0;background:#e6bd65;color:#211b12;border-radius:10px;padding:14px;font-weight:800;cursor:pointer;margin-top:14px;min-height:48px}
+.empty-card{border:1px dashed #48546a;border-radius:16px;padding:24px;text-align:center;color:#b8c3d8;font-size:14px;line-height:1.6;margin-bottom:16px}
+.house-links{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.house-links button{background:#1c2332;border:1px solid #3c465c;border-radius:14px;text-align:left;padding:22px;color:#f0e5d3;cursor:pointer;min-width:0}
+.house-links strong{display:block;font-size:16px}.house-links span{display:block;color:#acb9d1;font-size:12px;margin-top:8px;line-height:1.5}
+.section-title{font-size:12px;letter-spacing:.09em;color:#c1cce0;margin:22px 0 12px}
+.activity-row{display:flex;gap:12px;align-items:center;border-bottom:1px solid #30394c;padding:15px 0;font-size:14px}
+.activity-row p{font-size:12px;color:#a5b2ca;margin-top:5px;line-height:1.5}.activity-dot{width:7px;height:7px;border-radius:50%;background:#e6bd65;flex-shrink:0}
+.manager-brief{background:#222a3b;border:1px solid #58627b;border-radius:16px;padding:22px;margin:16px 0}.manager-brief h3{font-size:23px;letter-spacing:-.03em;margin:8px 0}.manager-brief button{margin-top:12px}
+.hm-card{background:#1c2332!important;border-color:#39445b!important}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+@media(min-width:768px){.focus-workspace{max-width:760px;margin:auto}.app-shell{padding:0 24px}.primary-nav{position:sticky;top:155px;z-index:45}}
+@media(max-width:767px){
+.primary-nav{position:fixed;bottom:0;left:0;right:0;z-index:100;padding:7px 5px calc(7px + env(safe-area-inset-bottom));gap:2px;border:1px solid #354158;box-shadow:0 -8px 30px #0005}
+.primary-nav button{flex-direction:column;gap:3px;font-size:10px;min-height:54px;padding:5px 2px}
+.primary-nav small{position:absolute;right:7px;top:2px;font-size:9px}
+.house-links{grid-template-columns:1fr}.focus-hero{padding:22px}.task-card{padding:17px}
+.app-shell{padding-bottom:env(safe-area-inset-bottom)}.task-top .eyebrow{letter-spacing:.06em}
+}
+@media(prefers-reduced-motion:reduce){.fu{animation:none!important}*{scroll-behavior:auto!important}}
+`}</style>
+
       {/* HEADER */}
-      <div style={{background:"linear-gradient(135deg,#261850,#1A0E3A)",borderBottom:"1px solid #D4A84330",padding:"20px 20px 16px",position:"sticky",top:0,zIndex:50}}>
+      <div style={{background:"linear-gradient(135deg,#1C2332,#151C2A)",borderBottom:"1px solid #D4A84330",padding:"20px 20px 16px",position:"sticky",top:0,zIndex:50}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div>
-            <div style={{display:"flex",alignItems:"center",gap:10}}><h1 style={{fontFamily:"'Space Mono',monospace",fontSize:20,fontWeight:700,color:"#D4A843",letterSpacing:"-0.02em"}}>ΣΦΕ HOUSE BOARD</h1><SyncDot connected={fbConnected}/></div>
-            <p style={{fontSize:12,color:"#64748B",marginTop:2,fontFamily:"'Space Mono',monospace"}}>{semesterName} • Week {currentWeekIdx+1}/{weeks.length}</p>
+            <div style={{display:"flex",alignItems:"center",gap:10}}><h1 style={{fontFamily:"'Space Mono',monospace",fontSize:20,fontWeight:700,color:"#D4A843",letterSpacing:"-0.02em"}}>ΣΦΕ HOUSE</h1><SyncDot connected={fbConnected}/></div>
+            <p style={{fontSize:12,color:"#A0AEC3",marginTop:2,fontFamily:"'Space Mono',monospace"}}>{semesterName} • Week {currentWeekIdx+1}/{weeks.length}</p>
           </div>
-          {!["setup","sunday_setup","project_setup"].includes(view)&&<div style={{width:52,height:52,borderRadius:"50%",background:`conic-gradient(#D4A843 ${completionPct*3.6}deg,#261850 ${completionPct*3.6}deg)`,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:42,height:42,borderRadius:"50%",background:"#1A1040",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#D4A843",fontFamily:"'Space Mono',monospace"}}>{completionPct}%</div></div>}
+          {!["setup","sunday_setup","project_setup"].includes(view)&&<div style={{width:52,height:52,borderRadius:"50%",background:`conic-gradient(#D4A843 ${completionPct*3.6}deg,#1C2332 ${completionPct*3.6}deg)`,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:42,height:42,borderRadius:"50%",background:"#161C29",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#D4A843",fontFamily:"'Space Mono',monospace"}}>{completionPct}%</div></div>}
         </div>
         {!["setup","sunday_setup","project_setup"].includes(view)&&<div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={()=>setCurrentWeekIdx(Math.max(0,currentWeekIdx-1))} style={{background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:6,width:32,height:32,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-          <div style={{flex:1,background:"#261850",border:"1px solid #3D2A6E",borderRadius:8,padding:"8px 14px",textAlign:"center",fontSize:14,fontWeight:600,color:"#CBD5E1",fontFamily:"'Space Mono',monospace"}}>{currentWeek}</div>
-          <button onClick={()=>setCurrentWeekIdx(Math.min(weeks.length-1,currentWeekIdx+1))} style={{background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:6,width:32,height:32,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+          <button onClick={()=>setCurrentWeekIdx(Math.max(0,currentWeekIdx-1))} style={{background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:6,width:32,height:32,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+          <div style={{flex:1,background:"#1C2332",border:"1px solid #364258",borderRadius:8,padding:"8px 14px",textAlign:"center",fontSize:14,fontWeight:600,color:"#CBD5E1",fontFamily:"'Space Mono',monospace"}}>{currentWeek}</div>
+          <button onClick={()=>setCurrentWeekIdx(Math.min(weeks.length-1,currentWeekIdx+1))} style={{background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:6,width:32,height:32,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
         </div>}
       </div>
 
-      {/* NAV */}
-      <div style={{display:"flex",gap:1,padding:"12px 12px 0",borderBottom:"1px solid #3D2A6E",background:"#140E2A",overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-        {[{key:"me",label:"Me"},{key:"dashboard",label:"Weekly"},{key:"sunday",label:"Sunday"},{key:"projects",label:"Projects"},{key:"issues",label:"Issues"},{key:"roster",label:"Roster"},{key:"leaderboard",label:"Board"},{key:"manager",label:"HM"},{key:"setup",label:"⚙"}].map(tab=>
-          <button className="nav-tab" key={tab.key} onClick={()=>{setView(tab.key);setSelectedBrother(null);}} style={{flex:1,padding:"10px 6px 12px",background:"none",border:"none",color:view===tab.key?"#F8FAFC":"#8B7BAA",fontSize:11,fontWeight:view===tab.key?700:500,cursor:"pointer",fontFamily:"inherit",borderBottom:view===tab.key?`2px solid ${tab.key==="setup"?"#D4A843":tab.key==="me"?"#C41E3A":"#D4A843"}`:"2px solid transparent"}}>{tab.label}</button>
-        )}
-      </div>
+      <nav className="primary-nav" aria-label="Main navigation">
+        {HOUSE_TABS.map(tab=><button key={tab.key} aria-current={(view===tab.key||tab.key==="house"&&["dashboard","sunday","roster","leaderboard"].includes(view)||tab.key==="manager"&&["setup","sunday_setup","project_setup"].includes(view))?"page":undefined} onClick={()=>{setView(tab.key);setSelectedBrother(null);}}><span aria-hidden="true">{tab.icon}</span>{tab.label}{tab.key==="manager"&&adminUnlocked&&verificationQueue.length>0&&<small>{verificationQueue.length}</small>}</button>)}
+      </nav>
 
       <div style={{padding:"16px 20px 100px"}}>
 
+        {view==="house"&&<section className="fu"><div className="focus-hero"><div className="eyebrow">SIGEP · MI ETA</div><h2>A house that works together.</h2><p>Schedules, people, and the work getting done.</p></div><div className="house-links">{[["dashboard","Weekly schedule","Assignments and deadlines"],["sunday","Sunday cleaning","Teams and kitchen duty"],["roster","Brothers","Find people and their assignments"],["leaderboard","House progress","Completion and semester stats"]].map(([key,title,desc])=><button key={key} onClick={()=>setView(key)}><strong>{title} ↗</strong><span>{desc}</span></button>)}</div><h3 className="section-title">Recent submissions</h3>{recentActivity.length?recentActivity.map((t,i)=><div className="activity-row" key={i}><span className="activity-dot"/><div><strong>{t.name}</strong><p>{t.entry.proof?.submittedBy||t.entry.completedBy||"House member"} · {t.week} · {TASK_LABELS[t.entry.status]}</p></div></div>):<div className="empty-card">Completed work will appear here as brothers submit it.</div>}</section>}
         {/* ══════ MY VIEW ══════ */}
         {view==="me"&&<div className="fu">
           {!myName?<div style={{maxWidth:340,margin:"30px auto",textAlign:"center"}}>
             <div style={{fontSize:32,marginBottom:16}}>👋</div>
             <h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9",marginBottom:8}}>Welcome!</h2>
-            <p style={{fontSize:13,color:"#64748B",marginBottom:20,lineHeight:1.5}}>Start typing your name to find yourself in the roster.</p>
+            <p style={{fontSize:13,color:"#A0AEC3",marginBottom:20,lineHeight:1.5}}>Start typing your name to find yourself in the roster.</p>
             {(()=>{
               // Build full name list from all sources
               const allNamesSet=new Set([...brotherNames,...evenPins,...oddPins]);
@@ -1032,13 +1145,13 @@ export default function HouseJobsApp(){
               const exactMatch=allNamesList.find(n=>n.toLowerCase()===query);
               return<div style={{position:"relative"}}>
                 <Input value={pwInput} onChange={v=>setPwInput(v)} placeholder="Start typing your name..." style={{marginBottom:0,textAlign:"center"}}/>
-                {query&&!exactMatch&&filtered.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#261850",border:"1px solid #3D2A6E",borderRadius:"0 0 8px 8px",maxHeight:200,overflowY:"auto",zIndex:10}}>
-                  {filtered.slice(0,8).map(name=><button key={name} onClick={()=>{setMyNameAndSave(name);setPwInput("");}} style={{display:"block",width:"100%",padding:"10px 14px",background:"none",border:"none",borderBottom:"1px solid #1A1040",color:"#E2E8F0",fontSize:14,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}
-                    onMouseEnter={e=>e.target.style.background="#3D2A6E"} onMouseLeave={e=>e.target.style.background="none"}>{name}</button>)}
+                {query&&!exactMatch&&filtered.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1C2332",border:"1px solid #364258",borderRadius:"0 0 8px 8px",maxHeight:200,overflowY:"auto",zIndex:10}}>
+                  {filtered.slice(0,8).map(name=><button key={name} onClick={()=>{setMyNameAndSave(name);setPwInput("");}} style={{display:"block",width:"100%",padding:"10px 14px",background:"none",border:"none",borderBottom:"1px solid #161C29",color:"#E2E8F0",fontSize:14,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}
+                    onMouseEnter={e=>e.target.style.background="#364258"} onMouseLeave={e=>e.target.style.background="none"}>{name}</button>)}
                 </div>}
-                {query&&filtered.length===0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#261850",border:"1px solid #3D2A6E",borderRadius:"0 0 8px 8px",padding:"10px 14px",zIndex:10}}>
+                {query&&filtered.length===0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1C2332",border:"1px solid #364258",borderRadius:"0 0 8px 8px",padding:"10px 14px",zIndex:10}}>
                   <p style={{fontSize:12,color:"#EF4444",marginBottom:8}}>No match found in roster.</p>
-                  <button onClick={()=>{if(pwInput.trim()){setMyNameAndSave(pwInput.trim());setPwInput("");}}} style={{width:"100%",background:"#3D2A6E",border:"none",color:"#CBD5E1",borderRadius:6,padding:"8px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Use "{pwInput.trim()}" anyway</button>
+                  <button onClick={()=>{if(pwInput.trim()){setMyNameAndSave(pwInput.trim());setPwInput("");}}} style={{width:"100%",background:"#364258",border:"none",color:"#CBD5E1",borderRadius:6,padding:"8px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Use "{pwInput.trim()}" anyway</button>
                 </div>}
                 {exactMatch&&<button onClick={()=>{setMyNameAndSave(exactMatch);setPwInput("");}} style={{width:"100%",marginTop:12,background:"linear-gradient(135deg,#EC4899,#DB2777)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Continue as {exactMatch}</button>}
               </div>;
@@ -1048,23 +1161,23 @@ export default function HouseJobsApp(){
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
               <div>
                 <h2 style={{fontSize:20,fontWeight:700,color:"#F8FAFC"}}>{myName}</h2>
-                <p style={{fontSize:12,color:"#64748B"}}>Your assignments this week</p>
+                <p style={{fontSize:12,color:"#A0AEC3"}}>Your assignments this week</p>
               </div>
-              <button onClick={()=>setMyNameAndSave("")} style={{background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Change</button>
+              <button onClick={()=>setMyNameAndSave("")} style={{background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Change</button>
             </div>
 
             {/* Announcements */}
             {announcements.length>0&&<div style={{marginBottom:20}}>
               {[...announcements].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)).map(ann=>
-                <div key={ann.id} style={{background:ann.pinned?"#F59E0B12":"#261850",borderRadius:10,padding:"12px 16px",border:`1px solid ${ann.pinned?"#F59E0B40":"#3D2A6E"}`,marginBottom:6}}>
+                <div key={ann.id} style={{background:ann.pinned?"#F59E0B12":"#1C2332",borderRadius:10,padding:"12px 16px",border:`1px solid ${ann.pinned?"#F59E0B40":"#364258"}`,marginBottom:6}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div style={{flex:1}}>
                       {ann.pinned&&<span style={{fontSize:10,color:"#F59E0B",fontWeight:700,marginRight:6}}>📌 PINNED</span>}
                       <p style={{fontSize:14,color:"#F1F5F9",lineHeight:1.5}}>{ann.text}</p>
-                      <p style={{fontSize:11,color:"#64748B",marginTop:4}}>{ann.date}</p>
+                      <p style={{fontSize:11,color:"#A0AEC3",marginTop:4}}>{ann.date}</p>
                     </div>
                     {adminUnlocked&&<div style={{display:"flex",gap:4,flexShrink:0}}>
-                      <button onClick={()=>togglePinAnnouncement(ann.id)} style={{background:"none",border:"none",color:ann.pinned?"#F59E0B":"#64748B",cursor:"pointer",fontSize:12,padding:"0 2px"}}>📌</button>
+                      <button onClick={()=>togglePinAnnouncement(ann.id)} style={{background:"none",border:"none",color:ann.pinned?"#F59E0B":"#A0AEC3",cursor:"pointer",fontSize:12,padding:"0 2px"}}>📌</button>
                       <button onClick={()=>deleteAnnouncement(ann.id)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1}}>×</button>
                     </div>}
                   </div>
@@ -1072,78 +1185,21 @@ export default function HouseJobsApp(){
               )}
             </div>}
 
-            {adminUnlocked&&<div style={{background:"#261850",borderRadius:10,padding:"12px 16px",border:"1px solid #3D2A6E",marginBottom:20}}>
+            {adminUnlocked&&<div style={{background:"#1C2332",borderRadius:10,padding:"12px 16px",border:"1px solid #364258",marginBottom:20}}>
               <div style={{display:"flex",gap:8}}>
                 <Input value={newAnnouncement} onChange={setNewAnnouncement} placeholder="Post an announcement..." style={{flex:1,padding:"8px 10px",fontSize:13}}/>
                 <SmallBtn onClick={()=>addAnnouncement(newAnnouncement)} color="#F59E0B">Post</SmallBtn>
               </div>
             </div>}
 
-            {/* My Weekly Jobs */}
-            <h3 style={{fontSize:13,fontWeight:700,color:"#D4A843",marginBottom:4,letterSpacing:"0.05em"}}>WEEKLY HOUSE JOBS</h3>
-            <div style={{fontSize:11,color:"#64748B",marginBottom:10}}>Due {formatDue(getDueDate(currentWeek,"weekly",houseSettings))}</div>
-            {(()=>{
-              const myJobs=jobs.filter(j=>weekData[j.id]?.assigned?.includes(myName));
-              return myJobs.length>0?<div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:20}}>
-                {myJobs.map(j=>{const data=weekData[j.id];const area=AREA_META[j.area]||{color:"#6B7280"};return(
-                  <div key={j.id} style={{background:"#261850",borderRadius:10,padding:"12px 16px",border:"1px solid #3D2A6E"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <div style={{width:8,height:8,borderRadius:"50%",background:area.color,flexShrink:0}}/>
-                        <span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{j.name}</span>
-                      </div>
-                      <StatusBadge status={data.status} onClick={()=>cycleStatus(currentWeek,j.id,adminUnlocked)}/>
-                    </div>
-                    <div style={{fontSize:12,color:"#64748B",marginTop:6,marginLeft:16}}>{j.desc}</div>
-                  </div>);})}
-              </div>:<div style={{background:"#261850",borderRadius:10,padding:"16px",border:"1px solid #3D2A6E",textAlign:"center",color:"#64748B",fontSize:13,marginBottom:20}}>No weekly jobs assigned to you this week.</div>;
-            })()}
-
-            {/* My Sunday Jobs */}
-            <h3 style={{fontSize:13,fontWeight:700,color:"#8B5CF6",marginBottom:4,letterSpacing:"0.05em"}}>SUNDAY CLEANING</h3>
-            <div style={{fontSize:11,color:"#64748B",marginBottom:10}}>Due {formatDue(getDueDate(currentWeek,"sunday",houseSettings))}</div>
-            {(()=>{
-              const mySunJobs=sundayJobs.filter(j=>sunWeekData.jobs?.[j.id]?.assigned?.includes(myName));
-              const isMakeup=(sunWeekData.makeups||[]).includes(myName);
-              return<div style={{marginBottom:20}}>
-                {mySunJobs.length>0?<div style={{display:"flex",flexDirection:"column",gap:6}}>
-                  {mySunJobs.map(j=>{const data=sunWeekData.jobs[j.id];return(
-                    <div key={j.id} style={{background:"#261850",borderRadius:10,padding:"12px 16px",border:"1px solid #3D2A6E"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:8}}>
-                          <div style={{width:8,height:8,borderRadius:"50%",background:"#8B5CF6",flexShrink:0}}/>
-                          <span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{j.name}</span>
-                        </div>
-                        <StatusBadge status={data.status} onClick={()=>cycleSundayStatus(currentWeek,j.id,adminUnlocked)}/>
-                      </div>
-                      <div style={{fontSize:12,color:"#64748B",marginTop:6,marginLeft:16}}>{j.desc}</div>
-                    </div>);})}
-                </div>:<div style={{background:"#261850",borderRadius:10,padding:"16px",border:"1px solid #3D2A6E",textAlign:"center",color:"#64748B",fontSize:13}}>
-                  {isMakeup?"You're signed up for makeup this week.":"Not assigned to Sunday cleaning this week."}
-                </div>}
-              </div>;
-            })()}
-
-            {/* My Projects */}
-            <h3 style={{fontSize:13,fontWeight:700,color:"#EC4899",marginBottom:10,letterSpacing:"0.05em"}}>MY PROJECTS</h3>
-            {(()=>{
-              const myProj=(projWeekData.projects||[]).filter(p=>p.claimedBy===myName);
-              return myProj.length>0?<div style={{display:"flex",flexDirection:"column",gap:6}}>
-                {myProj.map((p,i)=><div key={i} style={{background:"#261850",borderRadius:10,padding:"12px 16px",border:"1px solid #3D2A6E"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div><span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{p.name}</span><DiffBadge d={p.difficulty}/></div>
-                    <span style={{fontSize:12,fontWeight:600,color:p.status==="verified"?"#3B82F6":p.status==="done"?"#D4A843":"#F59E0B"}}>{p.status==="verified"?"✓ Verified":p.status==="done"?"✓ Done":"In Progress"}</span>
-                  </div>
-                </div>)}
-              </div>:<div style={{background:"#261850",borderRadius:10,padding:"16px",border:"1px solid #3D2A6E",textAlign:"center",color:"#64748B",fontSize:13}}>No projects claimed. Check the Projects tab!</div>;
-            })()}
+            <TaskFocus tasks={personalTasks} name={myName} week={currentWeek} onProjects={()=>setView("projects")} onComplete={t=>openCompletion(t.type,currentWeek,t.id,t.index,t.name)}/>
 
             {/* Quick Stats */}
-            {stats[myName]&&<div style={{marginTop:20,background:"#261850",borderRadius:12,padding:16,border:"1px solid #3D2A6E"}}>
+            {stats[myName]&&<div style={{marginTop:20,background:"#1C2332",borderRadius:12,padding:16,border:"1px solid #364258"}}>
               <h3 style={{fontSize:13,fontWeight:700,color:"#94A3B8",marginBottom:10,letterSpacing:"0.05em"}}>SEMESTER STATS</h3>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8}}>
                 {[{n:stats[myName].done,l:"Done",c:"#D4A843"},{n:stats[myName].verified,l:"Verified",c:"#3B82F6"},{n:stats[myName].missed,l:"Missed",c:"#EF4444"},{n:stats[myName].pending,l:"Pending",c:"#F59E0B"}].map(s=>
-                  <div key={s.l} style={{textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace"}}>{s.n}</div><div style={{fontSize:10,color:"#64748B",marginTop:2}}>{s.l}</div></div>
+                  <div key={s.l} style={{textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace"}}>{s.n}</div><div style={{fontSize:10,color:"#A0AEC3",marginTop:2}}>{s.l}</div></div>
                 )}
               </div>
             </div>}
@@ -1165,7 +1221,7 @@ export default function HouseJobsApp(){
               {!allAssigned&&adminUnlocked&&<div style={{background:"#F59E0B10",border:"1px solid #F59E0B30",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
                 <div style={{fontSize:12,color:"#F59E0B",fontWeight:600,marginBottom:8}}>Unassigned brothers:</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {unassigned.map(name=><div key={name} style={{display:"flex",alignItems:"center",gap:4,background:"#261850",borderRadius:6,padding:"4px 8px",border:"1px solid #3D2A6E"}}>
+                  {unassigned.map(name=><div key={name} style={{display:"flex",alignItems:"center",gap:4,background:"#1C2332",borderRadius:6,padding:"4px 8px",border:"1px solid #364258"}}>
                     <span style={{fontSize:12,color:"#CBD5E1"}}>{name}</span>
                     <button onClick={()=>{
                       // Find the job with fewest people assigned this week and add them
@@ -1189,32 +1245,32 @@ export default function HouseJobsApp(){
             </>;
           })()}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
-            {[{n:weekStats.done,l:"Done",c:"#D4A843"},{n:weekStats.pending,l:"Pending",c:"#F59E0B"},{n:weekStats.missed,l:"Missed",c:"#EF4444"}].map(s=><div key={s.l} style={{background:"#261850",borderRadius:10,padding:"14px 12px",textAlign:"center",border:"1px solid #3D2A6E"}}><div style={{fontSize:26,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{s.n}</div><div style={{fontSize:11,color:"#64748B",marginTop:4}}>{s.l}</div></div>)}
+            {[{n:weekStats.done,l:"Done",c:"#D4A843"},{n:weekStats.pending,l:"Pending",c:"#F59E0B"},{n:weekStats.missed,l:"Missed",c:"#EF4444"}].map(s=><div key={s.l} style={{background:"#1C2332",borderRadius:10,padding:"14px 12px",textAlign:"center",border:"1px solid #364258"}}><div style={{fontSize:26,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{s.n}</div><div style={{fontSize:11,color:"#A0AEC3",marginTop:4}}>{s.l}</div></div>)}
           </div>
           <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-            <button onClick={()=>setAreaFilter(null)} style={{background:!areaFilter?"#3D2A6E":"#261850",border:`1px solid ${!areaFilter?"#4D3A7E":"#3D2A6E"}`,color:!areaFilter?"#F8FAFC":"#94A3B8",borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All</button>
-            {AREA_KEYS.map(k=><button key={k} onClick={()=>setAreaFilter(areaFilter===k?null:k)} style={{background:areaFilter===k?AREA_META[k].color+"22":"#261850",border:`1px solid ${areaFilter===k?AREA_META[k].color:"#3D2A6E"}`,color:areaFilter===k?AREA_META[k].color:"#94A3B8",borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{AREA_META[k].label}</button>)}
+            <button onClick={()=>setAreaFilter(null)} style={{background:!areaFilter?"#364258":"#1C2332",border:`1px solid ${!areaFilter?"#4D3A7E":"#364258"}`,color:!areaFilter?"#F8FAFC":"#94A3B8",borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All</button>
+            {AREA_KEYS.map(k=><button key={k} onClick={()=>setAreaFilter(areaFilter===k?null:k)} style={{background:areaFilter===k?AREA_META[k].color+"22":"#1C2332",border:`1px solid ${areaFilter===k?AREA_META[k].color:"#364258"}`,color:areaFilter===k?AREA_META[k].color:"#94A3B8",borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{AREA_META[k].label}</button>)}
           </div>
           <div className="job-grid">
             {jobs.filter(j=>!areaFilter||j.area===areaFilter).map((job,i)=>{const data=weekData[job.id];if(!data)return null;const area=AREA_META[job.area]||{label:"?",color:"#6B7280"};const isEd=weeklyEditingJob===job.id;return(
-              <div key={job.id} className="ch fu" onClick={()=>setShowJobDetail(showJobDetail===job.id?null:job.id)} style={{background:"#261850",borderRadius:12,padding:"14px 16px",border:`1px solid ${data.status==="missed"?"#EF444440":"#3D2A6E"}`,animationDelay:`${i*.03}s`,cursor:"pointer"}}>
+              <div key={job.id} className="ch fu" onClick={()=>setShowJobDetail(showJobDetail===job.id?null:job.id)} style={{background:"#1C2332",borderRadius:12,padding:"14px 16px",border:`1px solid ${data.status==="missed"?"#EF444440":"#364258"}`,animationDelay:`${i*.03}s`,cursor:"pointer"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:area.color,boxShadow:`0 0 6px ${area.color}60`,flexShrink:0}}/><span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{job.name}</span>{job.rotating&&<span style={{fontSize:10,color:"#F59E0B",background:"#F59E0B18",padding:"1px 7px",borderRadius:4,fontWeight:600,border:"1px solid #F59E0B30"}}>ROT</span>}{job.floorRotate&&<span style={{fontSize:10,color:"#06B6D4",background:"#06B6D418",padding:"1px 7px",borderRadius:4,fontWeight:600,border:"1px solid #06B6D430"}}>FLOOR</span>}</div>
                     <div style={{fontSize:13,color:"#94A3B8",marginTop:4,marginLeft:16}}>{data.assigned?.join(", ")}</div>
                   </div>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    {adminUnlocked&&<button onClick={e=>{e.stopPropagation();if(isEd)setWeeklyEditingJob(null);else{setWeeklyEditingJob(job.id);setWeeklyEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"#64748B",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✏️</button>}
+                    {adminUnlocked&&<button onClick={e=>{e.stopPropagation();if(isEd)setWeeklyEditingJob(null);else{setWeeklyEditingJob(job.id);setWeeklyEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"#A0AEC3",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✏️</button>}
                     <StatusBadge status={data.status} onClick={e=>{e.stopPropagation();cycleStatus(currentWeek,job.id,adminUnlocked);}}/>
                   </div>
                 </div>
-                {isEd&&adminUnlocked&&<div onClick={e=>e.stopPropagation()} style={{marginTop:10,paddingTop:10,borderTop:"1px solid #3D2A6E",display:"flex",flexDirection:"column",gap:8}}>
+                {isEd&&adminUnlocked&&<div onClick={e=>e.stopPropagation()} style={{marginTop:10,paddingTop:10,borderTop:"1px solid #364258",display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"flex",gap:8}}>
                     <Input value={weeklyEditNames} onChange={setWeeklyEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/>
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
                     <label style={{fontSize:11,color:"#94A3B8",whiteSpace:"nowrap"}}>Duration:</label>
-                    <select value={weeklyEditDuration} onChange={e=>setWeeklyEditDuration(e.target.value)} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:6,padding:"5px 24px 5px 8px",fontSize:12,fontFamily:"inherit",flex:1}}>
+                    <select value={weeklyEditDuration} onChange={e=>setWeeklyEditDuration(e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"5px 24px 5px 8px",fontSize:12,fontFamily:"inherit",flex:1}}>
                       <option value="1">This week only</option>
                       <option value="2">2 weeks</option>
                       <option value="3">3 weeks</option>
@@ -1226,7 +1282,7 @@ export default function HouseJobsApp(){
                     <SmallBtn onClick={()=>{overrideWeeklyJob(currentWeek,job.id,weeklyEditNames.split(",").map(n=>n.trim()).filter(Boolean),weeklyEditDuration);setWeeklyEditingJob(null);setWeeklyEditDuration("1");}}>Save</SmallBtn>
                   </div>
                 </div>}
-                {showJobDetail===job.id&&!isEd&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #3D2A6E",fontSize:12,color:"#64748B",lineHeight:1.6}}><span style={{color:"#94A3B8",fontWeight:600}}>What to do: </span>{job.desc}</div>}
+                {showJobDetail===job.id&&!isEd&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #364258",fontSize:12,color:"#A0AEC3",lineHeight:1.6}}><span style={{color:"#94A3B8",fontWeight:600}}>What to do: </span>{job.desc}</div>}
               </div>);})}
           </div>
         </div>}
@@ -1254,7 +1310,7 @@ export default function HouseJobsApp(){
             return<div style={{background:"#8B5CF610",border:"1px solid #8B5CF630",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
               <div style={{fontSize:12,color:"#8B5CF6",fontWeight:600,marginBottom:8}}>Unassigned brothers:</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {unassignedSun.map(name=><div key={name} style={{display:"flex",alignItems:"center",gap:4,background:"#261850",borderRadius:6,padding:"4px 8px",border:"1px solid #3D2A6E"}}>
+                {unassignedSun.map(name=><div key={name} style={{display:"flex",alignItems:"center",gap:4,background:"#1C2332",borderRadius:6,padding:"4px 8px",border:"1px solid #364258"}}>
                   <span style={{fontSize:12,color:"#CBD5E1"}}>{name}</span>
                   <button onClick={()=>{
                     const u=JSON.parse(JSON.stringify(sundayAssignments));
@@ -1276,10 +1332,10 @@ export default function HouseJobsApp(){
             </div>;
           })()}
           </>;})()}
-          {!adminUnlocked&&<div className="manager-login-grid" style={{background:"#261850",borderRadius:10,padding:"10px 14px",border:"1px solid #3D2A6E",marginBottom:16,display:"grid",gridTemplateColumns:"1fr 1fr auto",alignItems:"center",gap:8}}><Input type="email" value={adminEmail} onChange={v=>{setAdminEmail(v);setPwError(false);}} placeholder="Manager email" style={{padding:"7px 9px",fontSize:12}}/><Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Password" style={{padding:"7px 9px",fontSize:12}}/><SmallBtn onClick={checkPassword}>{adminLoading?"...":"Unlock"}</SmallBtn></div>}
+          {!adminUnlocked&&<div className="manager-login-grid" style={{background:"#1C2332",borderRadius:10,padding:"10px 14px",border:"1px solid #364258",marginBottom:16,display:"grid",gridTemplateColumns:"1fr 1fr auto",alignItems:"center",gap:8}}><Input type="email" value={adminEmail} onChange={v=>{setAdminEmail(v);setPwError(false);}} placeholder="Manager email" style={{padding:"7px 9px",fontSize:12}}/><Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Password" style={{padding:"7px 9px",fontSize:12}}/><SmallBtn onClick={checkPassword}>{adminLoading?"...":"Unlock"}</SmallBtn></div>}
           <div className="job-grid">
             {sundayJobs.map((job,i)=>{const data=sunWeekData.jobs?.[job.id];if(!data)return null;const isEd=sundayEditingJob===job.id;return(
-              <div key={job.id} className="fu" style={{background:"#261850",borderRadius:12,padding:"14px 16px",border:"1px solid #3D2A6E",animationDelay:`${i*.03}s`}}>
+              <div key={job.id} className="fu" style={{background:"#1C2332",borderRadius:12,padding:"14px 16px",border:"1px solid #364258",animationDelay:`${i*.03}s`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:"#8B5CF6",boxShadow:"0 0 6px #8B5CF660",flexShrink:0}}/><span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{job.name}</span></div>
@@ -1287,18 +1343,18 @@ export default function HouseJobsApp(){
                     <div style={{fontSize:11,color:"#4D3A7E",marginTop:4,marginLeft:16,lineHeight:1.4}}>{job.desc}</div>
                   </div>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    {adminUnlocked&&<button onClick={()=>{if(isEd)setSundayEditingJob(null);else{setSundayEditingJob(job.id);setSundayEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"#64748B",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✏️</button>}
+                    {adminUnlocked&&<button onClick={()=>{if(isEd)setSundayEditingJob(null);else{setSundayEditingJob(job.id);setSundayEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"#A0AEC3",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✏️</button>}
                     <StatusBadge status={data.status} onClick={e=>{e.stopPropagation();cycleSundayStatus(currentWeek,job.id,adminUnlocked);}}/>
                   </div>
                 </div>
-                {isEd&&adminUnlocked&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #3D2A6E",display:"flex",gap:8}}><Input value={sundayEditNames} onChange={setSundayEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={()=>{overrideSundayJob(currentWeek,job.id,sundayEditNames.split(",").map(n=>n.trim()).filter(Boolean));setSundayEditingJob(null);}}>Save</SmallBtn></div>}
+                {isEd&&adminUnlocked&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #364258",display:"flex",gap:8}}><Input value={sundayEditNames} onChange={setSundayEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={()=>{overrideSundayJob(currentWeek,job.id,sundayEditNames.split(",").map(n=>n.trim()).filter(Boolean));setSundayEditingJob(null);}}>Save</SmallBtn></div>}
               </div>);})}
           </div>
 
           {/* MAKEUP SECTION */}
-          <div style={{marginTop:20,background:"#261850",borderRadius:12,padding:16,border:"1px solid #F59E0B40"}}>
+          <div style={{marginTop:20,background:"#1C2332",borderRadius:12,padding:16,border:"1px solid #F59E0B40"}}>
             <h3 style={{fontSize:13,fontWeight:700,color:"#F59E0B",marginBottom:4,letterSpacing:"0.05em"}}>MISSED SUNDAY?</h3>
-            <p style={{fontSize:12,color:"#64748B",lineHeight:1.6,marginBottom:12}}>
+            <p style={{fontSize:12,color:"#A0AEC3",lineHeight:1.6,marginBottom:12}}>
               If you missed this week's cleaning, enter your name below to be added to <span style={{color:"#CBD5E1",fontWeight:600}}>next week's</span> Sunday cleaning regardless of your pin group. You must also fill out the absence form.
             </p>
             {currentWeekIdx<weeks.length-1?<>
@@ -1306,7 +1362,7 @@ export default function HouseJobsApp(){
                 <Input value={makeupName} onChange={setMakeupName} placeholder="Your full name..." style={{flex:1,padding:"8px 12px",fontSize:13}}/>
                 <SmallBtn onClick={()=>addMakeup(makeupName)} color="#F59E0B">Add Me</SmallBtn>
               </div>
-            </>:<p style={{fontSize:12,color:"#64748B",fontStyle:"italic"}}>Last week of the semester — no makeup available.</p>}
+            </>:<p style={{fontSize:12,color:"#A0AEC3",fontStyle:"italic"}}>Last week of the semester — no makeup available.</p>}
 
             {/* Show who's signed up for makeup next week */}
             {currentWeekIdx<weeks.length-1&&(()=>{
@@ -1316,7 +1372,7 @@ export default function HouseJobsApp(){
               if(makeups.length===0)return null;
               return<div style={{marginTop:8}}>
                 <div style={{fontSize:11,color:"#94A3B8",fontWeight:600,marginBottom:6}}>SIGNED UP FOR NEXT WEEK ({nextWeek}):</div>
-                {makeups.map((name,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1A1040",borderRadius:6,padding:"6px 10px",marginBottom:4,border:"1px solid #3D2A6E"}}>
+                {makeups.map((name,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#161C29",borderRadius:6,padding:"6px 10px",marginBottom:4,border:"1px solid #364258"}}>
                   <span style={{fontSize:13,color:"#FCD34D"}}>{name}</span>
                   {(adminUnlocked)&&<button onClick={()=>removeMakeup(nextWeek,name)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:16,padding:"0 4px",lineHeight:1}}>×</button>}
                 </div>)}
@@ -1324,9 +1380,9 @@ export default function HouseJobsApp(){
             })()}
 
             {/* Show makeups for current week if any */}
-            {(sunWeekData.makeups||[]).length>0&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #3D2A6E"}}>
+            {(sunWeekData.makeups||[]).length>0&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #364258"}}>
               <div style={{fontSize:11,color:"#94A3B8",fontWeight:600,marginBottom:6}}>MAKEUP MEMBERS THIS WEEK:</div>
-              {sunWeekData.makeups.map((name,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1A1040",borderRadius:6,padding:"6px 10px",marginBottom:4,border:"1px solid #F59E0B30"}}>
+              {sunWeekData.makeups.map((name,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#161C29",borderRadius:6,padding:"6px 10px",marginBottom:4,border:"1px solid #F59E0B30"}}>
                 <span style={{fontSize:13,color:"#FCD34D"}}>{name}</span>
                 {adminUnlocked&&<button onClick={()=>removeMakeup(currentWeek,name)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:16,padding:"0 4px",lineHeight:1}}>×</button>}
               </div>)}
@@ -1335,14 +1391,14 @@ export default function HouseJobsApp(){
 
           {adminUnlocked&&<div style={{marginTop:16}}>
             {!showTempJobForm?<button onClick={()=>setShowTempJobForm(true)} style={{width:"100%",background:"#C41E3A18",border:"1px solid #C41E3A40",color:"#C41E3A",borderRadius:10,padding:"12px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>+ Add Temp Job (this week only)</button>
-            :<div style={{background:"#261850",borderRadius:10,padding:14,border:"1px solid #C41E3A40"}}>
+            :<div style={{background:"#1C2332",borderRadius:10,padding:14,border:"1px solid #C41E3A40"}}>
               <div style={{fontSize:12,color:"#C41E3A",fontWeight:600,marginBottom:8}}>TEMP JOB — This week only</div>
               <Input value={tempJobName} onChange={setTempJobName} placeholder="Job name..." style={{marginBottom:8}}/>
               <Input value={tempJobDesc} onChange={setTempJobDesc} placeholder="Description..." style={{marginBottom:8}}/>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                   <label style={{fontSize:11,color:"#94A3B8"}}>People:</label>
-                  <select value={tempJobPeople} onChange={e=>setTempJobPeople(+e.target.value)} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
+                  <select value={tempJobPeople} onChange={e=>setTempJobPeople(+e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
                     {[1,2,3,4,5,6,7,8].map(n=><option key={n} value={n}>{n}</option>)}
                   </select>
                 </div>
@@ -1360,7 +1416,7 @@ export default function HouseJobsApp(){
                   }
                   setTempJobName("");setTempJobDesc("");setTempJobPeople(2);setShowTempJobForm(false);
                 }} color="#C41E3A">Add</SmallBtn>
-                <SmallBtn onClick={()=>{setShowTempJobForm(false);setTempJobName("");setTempJobDesc("");}} color="#64748B">Cancel</SmallBtn>
+                <SmallBtn onClick={()=>{setShowTempJobForm(false);setTempJobName("");setTempJobDesc("");}} color="#A0AEC3">Cancel</SmallBtn>
               </div>
             </div>}
           </div>}
@@ -1372,7 +1428,7 @@ export default function HouseJobsApp(){
               {(sunWeekData.tempJobs||[]).map((tj,i)=>{
                 const data=sunWeekData.jobs?.[tj.id]||{assigned:[],status:"pending"};
                 const isEd=sundayEditingJob===tj.id;
-                return<div key={tj.id} className="fu" style={{background:"#261850",borderRadius:12,padding:"14px 16px",border:"1px solid #C41E3A30"}}>
+                return<div key={tj.id} className="fu" style={{background:"#1C2332",borderRadius:12,padding:"14px 16px",border:"1px solid #C41E3A30"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div style={{flex:1}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1384,7 +1440,7 @@ export default function HouseJobsApp(){
                       {tj.desc&&<div style={{fontSize:11,color:"#6B5F80",marginTop:4,marginLeft:16}}>{tj.desc}</div>}
                     </div>
                     <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                      {adminUnlocked&&<button onClick={()=>{if(isEd)setSundayEditingJob(null);else{setSundayEditingJob(tj.id);setSundayEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"#64748B",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✏️</button>}
+                      {adminUnlocked&&<button onClick={()=>{if(isEd)setSundayEditingJob(null);else{setSundayEditingJob(tj.id);setSundayEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"#A0AEC3",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✏️</button>}
                       {adminUnlocked&&<button onClick={()=>{
                         const u=JSON.parse(JSON.stringify(sundayAssignments));
                         if(u[currentWeek]){
@@ -1396,13 +1452,13 @@ export default function HouseJobsApp(){
                       <StatusBadge status={data.status} onClick={()=>cycleSundayStatus(currentWeek,tj.id,adminUnlocked)}/>
                     </div>
                   </div>
-                  {isEd&&adminUnlocked&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #3D2A6E",display:"flex",gap:8}}><Input value={sundayEditNames} onChange={setSundayEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={()=>{overrideSundayJob(currentWeek,tj.id,sundayEditNames.split(",").map(n=>n.trim()).filter(Boolean));setSundayEditingJob(null);}}>Save</SmallBtn></div>}
+                  {isEd&&adminUnlocked&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #364258",display:"flex",gap:8}}><Input value={sundayEditNames} onChange={setSundayEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={()=>{overrideSundayJob(currentWeek,tj.id,sundayEditNames.split(",").map(n=>n.trim()).filter(Boolean));setSundayEditingJob(null);}}>Save</SmallBtn></div>}
                 </div>;
               })}
             </div>
           </div>}
 
-          {adminUnlocked&&<button onClick={()=>setView("sunday_setup")} style={{marginTop:20,width:"100%",background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:10,padding:"12px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>⚙ Edit Sunday Roster & Jobs</button>}
+          {adminUnlocked&&<button onClick={()=>setView("sunday_setup")} style={{marginTop:20,width:"100%",background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:10,padding:"12px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>⚙ Edit Sunday Roster & Jobs</button>}
         </div>}
 
         {/* ══════ SUNDAY SETUP ══════ */}
@@ -1410,22 +1466,22 @@ export default function HouseJobsApp(){
           <button onClick={()=>setView("sunday")} style={{background:"none",border:"none",color:"#8B5CF6",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0}}>← Back</button>
           <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:16}}>Sunday Setup</h2>
           <div style={{display:"flex",gap:6,marginBottom:16}}>
-            {[{key:"even",label:`Even (${evenPins.length})`},{key:"odd",label:`Odd (${oddPins.length})`},{key:"sunjobs",label:`Jobs (${sundayJobs.length})`}].map(t=><button key={t.key} onClick={()=>setSunSetupTab(t.key)} style={{flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:sunSetupTab===t.key?"#8B5CF618":"#261850",border:`1px solid ${sunSetupTab===t.key?"#8B5CF6":"#3D2A6E"}`,color:sunSetupTab===t.key?"#8B5CF6":"#94A3B8"}}>{t.label}</button>)}
+            {[{key:"even",label:`Even (${evenPins.length})`},{key:"odd",label:`Odd (${oddPins.length})`},{key:"sunjobs",label:`Jobs (${sundayJobs.length})`}].map(t=><button key={t.key} onClick={()=>setSunSetupTab(t.key)} style={{flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:sunSetupTab===t.key?"#8B5CF618":"#1C2332",border:`1px solid ${sunSetupTab===t.key?"#8B5CF6":"#364258"}`,color:sunSetupTab===t.key?"#8B5CF6":"#94A3B8"}}>{t.label}</button>)}
           </div>
-          {sunSetupTab==="even"&&<div><div style={{display:"flex",gap:8,marginBottom:12}}><Input value={sunEditName} onChange={setSunEditName} placeholder="Add even pin..." style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditName.trim()){const n=[...evenPins,sunEditName.trim()];setEvenPins(n);saveSunCfg(n,oddPins,sundayJobs);setSunEditName("");}}} color="#8B5CF6">+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{evenPins.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#261850",borderRadius:8,padding:"8px 12px",border:"1px solid #3D2A6E"}}><span style={{fontSize:14,color:"#CBD5E1"}}>{b}</span><button onClick={()=>{const n=evenPins.filter((_,j)=>j!==i);setEvenPins(n);saveSunCfg(n,oddPins,sundayJobs);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
-          {sunSetupTab==="odd"&&<div><div style={{display:"flex",gap:8,marginBottom:12}}><Input value={sunEditName} onChange={setSunEditName} placeholder="Add odd pin..." style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditName.trim()){const n=[...oddPins,sunEditName.trim()];setOddPins(n);saveSunCfg(evenPins,n,sundayJobs);setSunEditName("");}}} color="#06B6D4">+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{oddPins.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#261850",borderRadius:8,padding:"8px 12px",border:"1px solid #3D2A6E"}}><span style={{fontSize:14,color:"#CBD5E1"}}>{b}</span><button onClick={()=>{const n=oddPins.filter((_,j)=>j!==i);setOddPins(n);saveSunCfg(evenPins,n,sundayJobs);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
+          {sunSetupTab==="even"&&<div><div style={{display:"flex",gap:8,marginBottom:12}}><Input value={sunEditName} onChange={setSunEditName} placeholder="Add even pin..." style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditName.trim()){const n=[...evenPins,sunEditName.trim()];setEvenPins(n);saveSunCfg(n,oddPins,sundayJobs);setSunEditName("");}}} color="#8B5CF6">+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{evenPins.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1C2332",borderRadius:8,padding:"8px 12px",border:"1px solid #364258"}}><span style={{fontSize:14,color:"#CBD5E1"}}>{b}</span><button onClick={()=>{const n=evenPins.filter((_,j)=>j!==i);setEvenPins(n);saveSunCfg(n,oddPins,sundayJobs);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
+          {sunSetupTab==="odd"&&<div><div style={{display:"flex",gap:8,marginBottom:12}}><Input value={sunEditName} onChange={setSunEditName} placeholder="Add odd pin..." style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditName.trim()){const n=[...oddPins,sunEditName.trim()];setOddPins(n);saveSunCfg(evenPins,n,sundayJobs);setSunEditName("");}}} color="#06B6D4">+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{oddPins.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1C2332",borderRadius:8,padding:"8px 12px",border:"1px solid #364258"}}><span style={{fontSize:14,color:"#CBD5E1"}}>{b}</span><button onClick={()=>{const n=oddPins.filter((_,j)=>j!==i);setOddPins(n);saveSunCfg(evenPins,n,sundayJobs);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
           {sunSetupTab==="sunjobs"&&<div>
-            <div style={{background:"#261850",borderRadius:10,padding:14,border:"1px solid #3D2A6E",marginBottom:12}}><Input value={sunEditJobName} onChange={setSunEditJobName} placeholder="Job name..." style={{marginBottom:8}}/><Input value={sunEditJobDesc} onChange={setSunEditJobDesc} placeholder="Description..." style={{marginBottom:8}}/><div style={{display:"flex",gap:12,alignItems:"center"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"#94A3B8"}}>People:</label><select value={sunEditJobPeople} onChange={e=>setSunEditJobPeople(+e.target.value)} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}>{[1,2,3,4,5,6,7,8].map(n=><option key={n} value={n}>{n}</option>)}</select></div><div style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditJobName.trim()){const n=[...sundayJobs,{id:"sun_"+Date.now(),name:sunEditJobName.trim(),people:sunEditJobPeople,desc:sunEditJobDesc.trim()}];setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);setSunEditJobName("");setSunEditJobDesc("");setSunEditJobPeople(2);}}} color="#8B5CF6">+ Add</SmallBtn></div></div>
+            <div style={{background:"#1C2332",borderRadius:10,padding:14,border:"1px solid #364258",marginBottom:12}}><Input value={sunEditJobName} onChange={setSunEditJobName} placeholder="Job name..." style={{marginBottom:8}}/><Input value={sunEditJobDesc} onChange={setSunEditJobDesc} placeholder="Description..." style={{marginBottom:8}}/><div style={{display:"flex",gap:12,alignItems:"center"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"#94A3B8"}}>People:</label><select value={sunEditJobPeople} onChange={e=>setSunEditJobPeople(+e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}>{[1,2,3,4,5,6,7,8].map(n=><option key={n} value={n}>{n}</option>)}</select></div><div style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditJobName.trim()){const n=[...sundayJobs,{id:"sun_"+Date.now(),name:sunEditJobName.trim(),people:sunEditJobPeople,desc:sunEditJobDesc.trim()}];setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);setSunEditJobName("");setSunEditJobDesc("");setSunEditJobPeople(2);}}} color="#8B5CF6">+ Add</SmallBtn></div></div>
             <div style={{display:"flex",flexDirection:"column",gap:4}}>{sundayJobs.map((j,i)=>{
               const isEd=editingSunJobIdx===i;
-              return<div key={j.id} style={{background:"#261850",borderRadius:8,padding:isEd?"12px":"8px 12px",border:`1px solid ${isEd?"#8B5CF6":"#3D2A6E"}`}}>
+              return<div key={j.id} style={{background:"#1C2332",borderRadius:8,padding:isEd?"12px":"8px 12px",border:`1px solid ${isEd?"#8B5CF6":"#364258"}`}}>
                 {!isEd?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <div style={{cursor:"pointer",flex:1}} onClick={()=>setEditingSunJobIdx(i)}>
                     <span style={{fontSize:13,color:"#CBD5E1"}}>{j.name}</span>
-                    <span style={{fontSize:11,color:"#64748B",marginLeft:8}}>×{j.people}</span>
+                    <span style={{fontSize:11,color:"#A0AEC3",marginLeft:8}}>×{j.people}</span>
                   </div>
                   <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
-                    <button onClick={()=>setEditingSunJobIdx(i)} style={{background:"none",border:"none",color:"#64748B",cursor:"pointer",fontSize:13,padding:"0 4px"}}>✏️</button>
+                    <button onClick={()=>setEditingSunJobIdx(i)} style={{background:"none",border:"none",color:"#A0AEC3",cursor:"pointer",fontSize:13,padding:"0 4px"}}>✏️</button>
                     <button onClick={()=>{const n=sundayJobs.filter((_,k)=>k!==i);setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
                   </div>
                 </div>
@@ -1435,7 +1491,7 @@ export default function HouseJobsApp(){
                   <div style={{display:"flex",gap:10,alignItems:"center"}}>
                     <div style={{display:"flex",alignItems:"center",gap:4}}>
                       <label style={{fontSize:11,color:"#94A3B8"}}>People:</label>
-                      <select value={j.people} onChange={e=>{const n=[...sundayJobs];n[i]={...n[i],people:+e.target.value};setSundayJobs(n);}} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
+                      <select value={j.people} onChange={e=>{const n=[...sundayJobs];n[i]={...n[i],people:+e.target.value};setSundayJobs(n);}} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
                         {[1,2,3,4,5,6,7,8].map(x=><option key={x} value={x}>{x}</option>)}
                       </select>
                     </div>
@@ -1456,7 +1512,7 @@ export default function HouseJobsApp(){
             <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9"}}>House Projects</h2>
             {adminUnlocked&&<SmallBtn onClick={()=>setView("project_setup")} color="#EC4899">⚙ Edit</SmallBtn>}
           </div>
-          <p style={{fontSize:12,color:"#64748B",marginBottom:16,lineHeight:1.5}}>Claim a project, finish it, get points. Whoever has the most points at the end of the semester wins a prize!</p>
+          <p style={{fontSize:12,color:"#A0AEC3",marginBottom:16,lineHeight:1.5}}>Claim a project, finish it, get points. Whoever has the most points at the end of the semester wins a prize!</p>
 
           <div className="job-grid">
             {(projWeekData.projects||[]).map((proj,i)=>{
@@ -1466,7 +1522,7 @@ export default function HouseJobsApp(){
               const isDone=proj.status==="done";
               const isVerified=proj.status==="verified";
               return(
-                <div key={i} className="fu" style={{background:"#261850",borderRadius:12,padding:"14px 16px",border:`1px solid ${isVerified?"#3B82F640":isDone?"#D4A84340":"#3D2A6E"}`,animationDelay:`${i*.04}s`}}>
+                <div key={i} className="fu" style={{background:"#1C2332",borderRadius:12,padding:"14px 16px",border:`1px solid ${isVerified?"#3B82F640":isDone?"#D4A84340":"#364258"}`,animationDelay:`${i*.04}s`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div style={{flex:1}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -1491,21 +1547,21 @@ export default function HouseJobsApp(){
                   </div>
                 </div>);
             })}
-            {(projWeekData.projects||[]).length===0&&<div style={{textAlign:"center",color:"#64748B",padding:20,fontSize:13}}>No projects assigned this week.</div>}
+            {(projWeekData.projects||[]).length===0&&<div style={{textAlign:"center",color:"#A0AEC3",padding:20,fontSize:13}}>No projects assigned this week.</div>}
           </div>
 
           {/* Project Leaderboard */}
-          <div style={{marginTop:24,background:"#261850",borderRadius:12,padding:16,border:"1px solid #EC489940"}}>
+          <div style={{marginTop:24,background:"#1C2332",borderRadius:12,padding:16,border:"1px solid #EC489940"}}>
             <h3 style={{fontSize:13,fontWeight:700,color:"#EC4899",marginBottom:10,letterSpacing:"0.05em"}}>🏆 PROJECT LEADERBOARD</h3>
             {Object.entries(projectStats).sort(([,a],[,b])=>b.points-a.points).length===0
-              ?<div style={{fontSize:13,color:"#64748B",textAlign:"center",padding:10}}>No projects completed yet — be the first!</div>
+              ?<div style={{fontSize:13,color:"#A0AEC3",textAlign:"center",padding:10}}>No projects completed yet — be the first!</div>
               :Object.entries(projectStats).sort(([,a],[,b])=>b.points-a.points).map(([name,s],i)=>{
                 const medal=i<3?["🥇","🥈","🥉"][i]:null;
-                return<div key={name} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #3D2A6E"}}>
-                  <span style={{width:24,textAlign:"center",fontSize:medal?16:13,color:"#64748B",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{medal||(i+1)}</span>
+                return<div key={name} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #364258"}}>
+                  <span style={{width:24,textAlign:"center",fontSize:medal?16:13,color:"#A0AEC3",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{medal||(i+1)}</span>
                   <span style={{flex:1,fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{name}</span>
                   <span style={{fontSize:12,color:"#EC4899",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{s.points} pts</span>
-                  <span style={{fontSize:11,color:"#64748B"}}>{s.count} done</span>
+                  <span style={{fontSize:11,color:"#A0AEC3"}}>{s.count} done</span>
                 </div>;
               })}
           </div>
@@ -1515,20 +1571,20 @@ export default function HouseJobsApp(){
         {view==="project_setup"&&adminUnlocked&&<div className="fu">
           <button onClick={()=>setView("projects")} style={{background:"none",border:"none",color:"#EC4899",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0}}>← Back</button>
           <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:16}}>Manage Projects ({projects.length})</h2>
-          <div style={{background:"#261850",borderRadius:10,padding:14,border:"1px solid #3D2A6E",marginBottom:12}}>
+          <div style={{background:"#1C2332",borderRadius:10,padding:14,border:"1px solid #364258",marginBottom:12}}>
             <Input value={projEditName} onChange={setProjEditName} placeholder="Project name..." style={{marginBottom:8}}/>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <select value={projEditArea} onChange={e=>setProjEditArea(e.target.value)} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:6,padding:"8px 28px 8px 10px",fontSize:13,fontFamily:"inherit",flex:1}}>
+              <select value={projEditArea} onChange={e=>setProjEditArea(e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"8px 28px 8px 10px",fontSize:13,fontFamily:"inherit",flex:1}}>
                 {["Basement","1st Floor","2nd Floor","3rd Floor","Common","Outside"].map(a=><option key={a} value={a}>{a}</option>)}
               </select>
-              <select value={projEditDiff} onChange={e=>setProjEditDiff(e.target.value)} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:6,padding:"8px 28px 8px 10px",fontSize:13,fontFamily:"inherit"}}>
+              <select value={projEditDiff} onChange={e=>setProjEditDiff(e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"8px 28px 8px 10px",fontSize:13,fontFamily:"inherit"}}>
                 <option value="easy">Easy (1pt)</option><option value="medium">Medium (2pts)</option>
               </select>
               <SmallBtn onClick={()=>{if(projEditName.trim()){const n=[...projects,{id:"p_"+Date.now(),name:projEditName.trim(),area:projEditArea,difficulty:projEditDiff}];setProjects(n);saveProjCfg(n);setProjEditName("");}}} color="#EC4899">+ Add</SmallBtn>
             </div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            {projects.map((p,i)=><div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#261850",borderRadius:8,padding:"8px 12px",border:"1px solid #3D2A6E"}}>
+            {projects.map((p,i)=><div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1C2332",borderRadius:8,padding:"8px 12px",border:"1px solid #364258"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
                 <span style={{fontSize:13,color:"#CBD5E1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
                 <DiffBadge d={p.difficulty}/>
@@ -1542,28 +1598,28 @@ export default function HouseJobsApp(){
         {/* ══════ HOUSE ISSUES & SUPPLIES ══════ */}
         {view==="issues"&&<div className="fu">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
-            <div><h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9"}}>House Issues</h2><p style={{fontSize:12,color:"#64748B",marginTop:3}}>Report damage, maintenance, cleaning, network, or missing supplies.</p></div>
+            <div><h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9"}}>House Issues</h2><p style={{fontSize:12,color:"#A0AEC3",marginTop:3}}>Report damage, maintenance, cleaning, network, or missing supplies.</p></div>
             <span style={{fontSize:11,color:"#F59E0B",background:"#F59E0B16",padding:"4px 8px",borderRadius:6}}>{openIssues.length} open</span>
           </div>
           <div className="hm-card" style={{marginBottom:16}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-              <select value={issueForm.category} onChange={e=>setIssueForm({...issueForm,category:e.target.value})} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 30px 10px 10px",fontFamily:"inherit"}}>{ISSUE_CATEGORIES.map(x=><option key={x}>{x}</option>)}</select>
-              <select value={issueForm.priority} onChange={e=>setIssueForm({...issueForm,priority:e.target.value})} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 30px 10px 10px",fontFamily:"inherit"}}>{ISSUE_PRIORITIES.map(x=><option key={x} value={x}>{x.toUpperCase()}</option>)}</select>
+              <select value={issueForm.category} onChange={e=>setIssueForm({...issueForm,category:e.target.value})} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 30px 10px 10px",fontFamily:"inherit"}}>{ISSUE_CATEGORIES.map(x=><option key={x}>{x}</option>)}</select>
+              <select value={issueForm.priority} onChange={e=>setIssueForm({...issueForm,priority:e.target.value})} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 30px 10px 10px",fontFamily:"inherit"}}>{ISSUE_PRIORITIES.map(x=><option key={x} value={x}>{x.toUpperCase()}</option>)}</select>
             </div>
             <Input value={issueForm.location} onChange={v=>setIssueForm({...issueForm,location:v})} placeholder="Location, e.g. 2nd floor bathroom" style={{marginBottom:8}}/>
-            <textarea value={issueForm.description} onChange={e=>setIssueForm({...issueForm,description:e.target.value})} placeholder={issueForm.category==="Supplies"?"What supply is low or missing?":"What is wrong?"} rows={3} style={{width:"100%",resize:"vertical",background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:8}}/>
+            <textarea value={issueForm.description} onChange={e=>setIssueForm({...issueForm,description:e.target.value})} placeholder={issueForm.category==="Supplies"?"What supply is low or missing?":"What is wrong?"} rows={3} style={{width:"100%",resize:"vertical",background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:8}}/>
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-              <span style={{fontSize:11,color:"#64748B"}}>Add enough detail for the manager to find and fix it.</span>
+              <span style={{fontSize:11,color:"#A0AEC3"}}>Add enough detail for the manager to find and fix it.</span>
               <div style={{flex:1}}/>
-              <button onClick={submitIssue} disabled={!issueForm.description.trim()} style={{background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#140E2A",borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:!issueForm.description.trim()?0.5:1}}>Submit report</button>
+              <button onClick={submitIssue} disabled={!issueForm.description.trim()} style={{background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#10131C",borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:!issueForm.description.trim()?0.5:1}}>Submit report</button>
             </div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {openIssues.length===0?<div className="hm-card" style={{textAlign:"center",color:"#64748B",fontSize:13}}>No open house issues.</div>:openIssues.map(issue=>{
+            {openIssues.length===0?<div className="hm-card" style={{textAlign:"center",color:"#A0AEC3",fontSize:13}}>No open house issues.</div>:openIssues.map(issue=>{
               const color=issue.priority==="urgent"?"#EF4444":issue.priority==="high"?"#F97316":issue.priority==="medium"?"#F59E0B":"#3B82F6";
               return<div key={issue.id} className="hm-card" style={{borderColor:`${color}55`}}>
                 <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
-                  <div style={{minWidth:0}}><div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color,fontWeight:700}}>{issue.priority?.toUpperCase()}</span><span style={{fontSize:11,color:"#A78BFA"}}>{issue.category}</span>{issue.location&&<span style={{fontSize:11,color:"#64748B"}}>• {issue.location}</span>}</div><p style={{fontSize:14,color:"#F1F5F9",marginTop:6,lineHeight:1.45}}>{issue.description}</p><p style={{fontSize:10,color:"#64748B",marginTop:6}}>Reported by {issue.reporter} • {new Date(issue.createdAt).toLocaleDateString()}</p></div>
+                  <div style={{minWidth:0}}><div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color,fontWeight:700}}>{issue.priority?.toUpperCase()}</span><span style={{fontSize:11,color:"#A78BFA"}}>{issue.category}</span>{issue.location&&<span style={{fontSize:11,color:"#A0AEC3"}}>• {issue.location}</span>}</div><p style={{fontSize:14,color:"#F1F5F9",marginTop:6,lineHeight:1.45}}>{issue.description}</p><p style={{fontSize:10,color:"#A0AEC3",marginTop:6}}>Reported by {issue.reporter} • {new Date(issue.createdAt).toLocaleDateString()}</p></div>
                   {issue.photo&&<img src={issue.photo} alt="" style={{width:72,height:72,objectFit:"cover",borderRadius:8,flexShrink:0}}/>}
                 </div>
                 {adminUnlocked&&<div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}><SmallBtn onClick={()=>updateIssue(issue.id,{status:"in-progress"})} color="#3B82F6">In progress</SmallBtn><SmallBtn onClick={()=>updateIssue(issue.id,{status:"closed"})} color="#D4A843">Close</SmallBtn><SmallBtn onClick={()=>removeIssue(issue.id)} color="#EF4444">Delete</SmallBtn></div>}
@@ -1575,17 +1631,17 @@ export default function HouseJobsApp(){
         {/* ══════ ROSTER ══════ */}
         {view==="roster"&&!selectedBrother&&<div className="fu">
           <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4}}>Full Roster</h2>
-          <p style={{fontSize:12,color:"#64748B",marginBottom:16}}>Tap a name to see their full schedule</p>
+          <p style={{fontSize:12,color:"#A0AEC3",marginBottom:16}}>Tap a name to see their full schedule</p>
           <div className="roster-grid">
             {brothers.map((bObj,i)=>{const b=typeof bObj==="string"?{name:bObj,floor:"first"}:bObj;const s=stats[b.name]||{total:0,done:0,verified:0};const pct=s.total>0?Math.round(((s.done+(s.verified||0))/s.total)*100):0;const fc=AREA_META[b.floor]||{color:"#6B7280",label:"?"};return(
-              <div key={b.name} className="ch fu" onClick={()=>setSelectedBrother(b.name)} style={{background:"#261850",borderRadius:10,padding:"12px 16px",border:"1px solid #3D2A6E",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",animationDelay:`${i*.025}s`}}>
+              <div key={b.name} className="ch fu" onClick={()=>setSelectedBrother(b.name)} style={{background:"#1C2332",borderRadius:10,padding:"12px 16px",border:"1px solid #364258",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",animationDelay:`${i*.025}s`}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${fc.color}44,${fc.color}22)`,border:`1px solid ${fc.color}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:fc.color}}>{b.name[0]}</div>
                   <div>
                     <div style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{b.name}</div>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
                       <span style={{fontSize:10,color:fc.color,background:`${fc.color}18`,padding:"1px 6px",borderRadius:4,fontWeight:600}}>{fc.label}</span>
-                      <span style={{fontSize:11,color:"#64748B"}}>{s.done+(s.verified||0)}/{s.total}</span>
+                      <span style={{fontSize:11,color:"#A0AEC3"}}>{s.done+(s.verified||0)}/{s.total}</span>
                     </div>
                   </div>
                 </div>
@@ -1596,19 +1652,19 @@ export default function HouseJobsApp(){
 
         {view==="roster"&&selectedBrother&&<div className="fu">
           <button onClick={()=>setSelectedBrother(null)} style={{background:"none",border:"none",color:"#D4A843",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0}}>← Back</button>
-          <div style={{background:"#261850",borderRadius:14,padding:20,border:"1px solid #3D2A6E",marginBottom:16}}>
+          <div style={{background:"#1C2332",borderRadius:14,padding:20,border:"1px solid #364258",marginBottom:16}}>
             <h2 style={{fontSize:20,fontWeight:700,color:"#F8FAFC",marginBottom:14}}>{selectedBrother}</h2>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8}}>
               {[{n:stats[selectedBrother]?.done||0,l:"Done",c:"#D4A843"},{n:stats[selectedBrother]?.verified||0,l:"Verified",c:"#3B82F6"},{n:stats[selectedBrother]?.missed||0,l:"Missed",c:"#EF4444"},{n:stats[selectedBrother]?.pending||0,l:"Pending",c:"#F59E0B"}].map(s=>
-                <div key={s.l} style={{textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace"}}>{s.n}</div><div style={{fontSize:10,color:"#64748B",marginTop:2}}>{s.l}</div></div>
+                <div key={s.l} style={{textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace"}}>{s.n}</div><div style={{fontSize:10,color:"#A0AEC3",marginTop:2}}>{s.l}</div></div>
               )}
             </div>
           </div>
           <h3 style={{fontSize:13,fontWeight:700,color:"#94A3B8",marginBottom:10,letterSpacing:"0.05em"}}>WEEKLY ASSIGNMENTS</h3>
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {weeks.map((week,wi)=>{const wj=assignments[week];if(!wj)return null;const myJobs=jobs.filter(j=>wj[j.id]?.assigned?.includes(selectedBrother));if(!myJobs.length)return null;return(
-              <div key={week} style={{background:wi===currentWeekIdx?"#261850":"#1A1040",borderRadius:10,padding:"10px 14px",border:wi===currentWeekIdx?"1px solid #D4A843":"1px solid #261850"}}>
-                <div style={{fontSize:11,color:wi===currentWeekIdx?"#D4A843":"#64748B",fontWeight:600,fontFamily:"'Space Mono',monospace",marginBottom:6}}>{week} {wi===currentWeekIdx&&"← Current"}</div>
+              <div key={week} style={{background:wi===currentWeekIdx?"#1C2332":"#161C29",borderRadius:10,padding:"10px 14px",border:wi===currentWeekIdx?"1px solid #D4A843":"1px solid #1C2332"}}>
+                <div style={{fontSize:11,color:wi===currentWeekIdx?"#D4A843":"#A0AEC3",fontWeight:600,fontFamily:"'Space Mono',monospace",marginBottom:6}}>{week} {wi===currentWeekIdx&&"← Current"}</div>
                 {myJobs.map(j=><div key={j.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
                   <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:6,height:6,borderRadius:"50%",background:(AREA_META[j.area]||{color:"#6B7280"}).color}}/><span style={{fontSize:13,color:"#CBD5E1"}}>{j.name}</span></div>
                   <StatusBadge status={wj[j.id].status} onClick={()=>cycleStatus(week,j.id,adminUnlocked)}/>
@@ -1620,35 +1676,35 @@ export default function HouseJobsApp(){
         {/* ══════ LEADERBOARD ══════ */}
         {view==="leaderboard"&&<div className="fu">
           <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4}}>Accountability Board</h2>
-          <p style={{fontSize:12,color:"#64748B",marginBottom:16}}>Weekly jobs ranked by completion</p>
+          <p style={{fontSize:12,color:"#A0AEC3",marginBottom:16}}>Weekly jobs ranked by completion</p>
           {brotherNames.map(b=>({name:b,...stats[b],pct:stats[b]?.total>0?((stats[b].done+(stats[b].verified||0))/stats[b].total)*100:0})).sort((a,b)=>b.pct-a.pct).map((b,i)=>{
             const medal=i<3?["🥇","🥈","🥉"][i]:null;
-            return<div key={b.name} className="fu" style={{display:"flex",alignItems:"center",gap:12,background:"#261850",borderRadius:10,padding:"12px 16px",border:i<3?`1px solid ${["#F59E0B","#94A3B8","#CD7F32"][i]}40`:"1px solid #3D2A6E",marginBottom:6,animationDelay:`${i*.03}s`}}>
-              <div style={{width:28,fontSize:medal?18:14,textAlign:"center",color:"#64748B",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{medal||(i+1)}</div>
+            return<div key={b.name} className="fu" style={{display:"flex",alignItems:"center",gap:12,background:"#1C2332",borderRadius:10,padding:"12px 16px",border:i<3?`1px solid ${["#F59E0B","#94A3B8","#CD7F32"][i]}40`:"1px solid #364258",marginBottom:6,animationDelay:`${i*.03}s`}}>
+              <div style={{width:28,fontSize:medal?18:14,textAlign:"center",color:"#A0AEC3",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{medal||(i+1)}</div>
               <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{b.name}</div><div style={{display:"flex",gap:10,marginTop:4}}><span style={{fontSize:11,color:"#D4A843"}}>✓ {b.done+(b.verified||0)}</span><span style={{fontSize:11,color:"#EF4444"}}>✗ {b.missed}</span><span style={{fontSize:11,color:"#F59E0B"}}>○ {b.pending}</span></div></div>
-              <div style={{width:80}}><div style={{height:6,background:"#1A1040",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",borderRadius:3,width:`${Math.round(b.pct)}%`,background:b.pct>=80?"#D4A843":b.pct>=50?"#F59E0B":"#EF4444"}}/></div><div style={{fontSize:11,textAlign:"right",marginTop:3,fontWeight:700,fontFamily:"'Space Mono',monospace",color:b.pct>=80?"#D4A843":b.pct>=50?"#F59E0B":"#EF4444"}}>{Math.round(b.pct)}%</div></div>
+              <div style={{width:80}}><div style={{height:6,background:"#161C29",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",borderRadius:3,width:`${Math.round(b.pct)}%`,background:b.pct>=80?"#D4A843":b.pct>=50?"#F59E0B":"#EF4444"}}/></div><div style={{fontSize:11,textAlign:"right",marginTop:3,fontWeight:700,fontFamily:"'Space Mono',monospace",color:b.pct>=80?"#D4A843":b.pct>=50?"#F59E0B":"#EF4444"}}>{Math.round(b.pct)}%</div></div>
             </div>;})}
-          <div style={{marginTop:20,background:"#261850",borderRadius:12,padding:16,border:"1px solid #3D2A6E"}}>
+          <div style={{marginTop:20,background:"#1C2332",borderRadius:12,padding:16,border:"1px solid #364258"}}>
             <h3 style={{fontSize:13,fontWeight:700,color:"#EF4444",marginBottom:8,letterSpacing:"0.05em"}}>FINE TRACKER</h3>
-            <p style={{fontSize:12,color:"#64748B",lineHeight:1.6,marginBottom:12}}>Per Amendment 22: missed jobs = fines. 3+ misses flagged for Standards.</p>
+            <p style={{fontSize:12,color:"#A0AEC3",lineHeight:1.6,marginBottom:12}}>Per Amendment 22: missed jobs = fines. 3+ misses flagged for Standards.</p>
             {brotherNames.filter(b=>(stats[b]?.missed||0)>0).length===0?<div style={{fontSize:13,color:"#D4A843",textAlign:"center",padding:10}}>No missed jobs yet!</div>
-            :brotherNames.filter(b=>(stats[b]?.missed||0)>0).sort((a,b)=>(stats[b]?.missed||0)-(stats[a]?.missed||0)).map(b=><div key={b} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #3D2A6E"}}><span style={{fontSize:13,color:"#CBD5E1"}}>{b}</span><span style={{fontSize:12,fontWeight:700,fontFamily:"'Space Mono',monospace",color:(stats[b]?.missed||0)>=3?"#EF4444":"#F59E0B"}}>{stats[b]?.missed||0} miss{(stats[b]?.missed||0)!==1?"es":""}{(stats[b]?.missed||0)>=3&&" ⚠️"}</span></div>)}
+            :brotherNames.filter(b=>(stats[b]?.missed||0)>0).sort((a,b)=>(stats[b]?.missed||0)-(stats[a]?.missed||0)).map(b=><div key={b} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #364258"}}><span style={{fontSize:13,color:"#CBD5E1"}}>{b}</span><span style={{fontSize:12,fontWeight:700,fontFamily:"'Space Mono',monospace",color:(stats[b]?.missed||0)>=3?"#EF4444":"#F59E0B"}}>{stats[b]?.missed||0} miss{(stats[b]?.missed||0)!==1?"es":""}{(stats[b]?.missed||0)>=3&&" ⚠️"}</span></div>)}
           </div>
         </div>}
 
         {/* ══════ HOUSE MANAGER DASHBOARD ══════ */}
         {view==="manager"&&!adminUnlocked&&<div className="fu" style={{maxWidth:340,margin:"40px auto",textAlign:"center"}}>
           <div style={{fontSize:34,marginBottom:12}}>🛠️</div><h2 style={{fontSize:18,color:"#F1F5F9",marginBottom:6}}>House Manager Dashboard</h2>
-          <p style={{fontSize:13,color:"#64748B",marginBottom:18}}>Unlock to review work and manage the house.</p>
+          <p style={{fontSize:13,color:"#A0AEC3",marginBottom:18}}>Unlock to review work and manage the house.</p>
           <Input type="email" value={adminEmail} onChange={v=>{setAdminEmail(v);setPwError(false);}} placeholder="Manager email" style={{textAlign:"center",marginBottom:8}}/>
           <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Manager password" style={{textAlign:"center",marginBottom:10}}/>
           {pwError&&<p style={{fontSize:12,color:"#EF4444",marginBottom:10}}>Could not sign in. Check the manager account and password.</p>}
-          <button onClick={checkPassword} disabled={adminLoading} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#140E2A",borderRadius:10,padding:"13px",fontWeight:700,cursor:"pointer",opacity:adminLoading?.6:1}}>{adminLoading?"Signing in...":"Unlock dashboard"}</button>
+          <button onClick={checkPassword} disabled={adminLoading} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#10131C",borderRadius:10,padding:"13px",fontWeight:700,cursor:"pointer",opacity:adminLoading?.6:1}}>{adminLoading?"Signing in...":"Unlock dashboard"}</button>
         </div>}
         {view==="manager"&&adminUnlocked&&<div className="fu">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div><h2 style={{fontSize:19,fontWeight:700,color:"#F8FAFC"}}>House Manager</h2><p style={{fontSize:12,color:"#64748B",marginTop:2}}>Everything that needs your attention</p></div>
-            <button onClick={lockAdmin} style={{background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:7,padding:"6px 9px",fontSize:11,cursor:"pointer"}}>🔒 Lock</button>
+            <div><h2 style={{fontSize:19,fontWeight:700,color:"#F8FAFC"}}>House Manager</h2><p style={{fontSize:12,color:"#A0AEC3",marginTop:2}}>Everything that needs your attention</p></div>
+            <button onClick={lockAdmin} style={{background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:7,padding:"6px 9px",fontSize:11,cursor:"pointer"}}>🔒 Lock</button>
           </div>
           <div className="stat-grid" style={{marginBottom:14}}>
             {[{n:verificationQueue.length,l:"Awaiting review",c:"#D4A843"},{n:overdueItems.length,l:"Overdue",c:"#EF4444"},{n:openIssues.length,l:"Open issues",c:"#F59E0B"},{n:supplyReports.length,l:"Supply alerts",c:"#8B5CF6"}].map(x=><div key={x.l} className="hm-card" style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:700,color:x.c,fontFamily:"'Space Mono',monospace"}}>{x.n}</div><div style={{fontSize:11,color:"#94A3B8",marginTop:3}}>{x.l}</div></div>)}
@@ -1657,11 +1713,13 @@ export default function HouseJobsApp(){
             {[["Sunday","sunday","#8B5CF6"],["House issues","issues","#F59E0B"],["Setup","setup","#D4A843"],["Archive","archive","#3B82F6"]].map(([label,target,color])=><button key={label} onClick={()=>target==="archive"?archiveSemester():setView(target)} disabled={target==="archive"&&archiveBusy} style={{minWidth:112,background:`${color}18`,border:`1px solid ${color}50`,color,borderRadius:9,padding:"10px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{target==="archive"&&archiveBusy?"Saving...":label}</button>)}
           </div>
 
-          <h3 style={{fontSize:12,color:"#D4A843",letterSpacing:".08em",marginBottom:8}}>AWAITING VERIFICATION</h3>
+          <section className="manager-brief"><div><div className="eyebrow">YOUR NEXT MOVE</div><h3>{verificationQueue.length?"Review "+verificationQueue.length+" submitted job"+(verificationQueue.length===1?"":"s"):openIssues.length?"Check open house issues":"Review upcoming assignments"}</h3><p>All weeks included. Nothing gets hidden when the week changes.</p></div><button onClick={copyManagerBrief}>Copy house brief</button><p role="status">{briefNotice}</p></section>
+          <div className="filter-pills">{[["all","All work"],["weekly","Weekly"],["sunday","Sunday"],["project","Projects"]].map(([key,label])=><button key={key} aria-pressed={reviewFilter===key} onClick={()=>setReviewFilter(key)}>{label}</button>)}</div>
+          <h3 className="section-title">AWAITING VERIFICATION</h3>
           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
-            {verificationQueue.length===0?<div className="hm-card" style={{fontSize:13,color:"#64748B",textAlign:"center"}}>Nothing waiting for review.</div>:verificationQueue.map((item,i)=><div key={`${item.type}-${item.week}-${item.id||i}`} className="hm-card">
+            {verificationQueue.filter(t=>reviewFilter==="all"||t.type===reviewFilter).length===0?<div className="hm-card" style={{fontSize:13,color:"#A0AEC3",textAlign:"center"}}>Nothing waiting for review.</div>:verificationQueue.filter(t=>reviewFilter==="all"||t.type===reviewFilter).map((item,i)=><div key={`${item.type}-${item.week}-${item.id||i}`} className="hm-card">
               <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                <div style={{flex:1,minWidth:0}}><div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color:item.type==="sunday"?"#A78BFA":item.type==="project"?"#EC4899":"#D4A843",fontWeight:700}}>{item.type.toUpperCase()}</span><span style={{fontSize:10,color:"#64748B"}}>{item.week}</span></div><div style={{fontSize:14,color:"#F1F5F9",fontWeight:600,marginTop:4}}>{item.name}</div><div style={{fontSize:11,color:"#94A3B8",marginTop:4}}>{item.entry?.proof?.submittedBy||item.entry?.completedBy||"Unknown"}{item.entry?.proof?.submittedAt&&` • ${new Date(item.entry.proof.submittedAt).toLocaleString()}`}</div>{item.entry?.proof?.note&&<p style={{fontSize:12,color:"#CBD5E1",marginTop:6,lineHeight:1.4}}>{item.entry.proof.note}</p>}{item.entry?.proof?.supplyStatus!=="ok"&&<p style={{fontSize:11,color:"#F59E0B",marginTop:5}}>Supply {item.entry.proof.supplyStatus}: {item.entry.proof.supplyNote||"No details"}</p>}</div>
+                <div style={{flex:1,minWidth:0}}><div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color:item.type==="sunday"?"#A78BFA":item.type==="project"?"#EC4899":"#D4A843",fontWeight:700}}>{item.type.toUpperCase()}</span><span style={{fontSize:10,color:"#A0AEC3"}}>{item.week}</span></div><div style={{fontSize:14,color:"#F1F5F9",fontWeight:600,marginTop:4}}>{item.name}</div><div style={{fontSize:11,color:"#94A3B8",marginTop:4}}>{item.entry?.proof?.submittedBy||item.entry?.completedBy||"Unknown"}{item.entry?.proof?.submittedAt&&` • ${new Date(item.entry.proof.submittedAt).toLocaleString()}`}</div>{item.entry?.proof?.note&&<p style={{fontSize:12,color:"#CBD5E1",marginTop:6,lineHeight:1.4}}>{item.entry.proof.note}</p>}{item.entry?.proof?.supplyStatus&&item.entry.proof.supplyStatus!=="ok"&&<p style={{fontSize:11,color:"#F59E0B",marginTop:5}}>Supply {item.entry.proof.supplyStatus}: {item.entry.proof.supplyNote||"No details"}</p>}</div>
                 {item.entry?.proof?.photo&&<img src={item.entry.proof.photo} alt="Completion proof" style={{width:76,height:76,objectFit:"cover",borderRadius:8,flexShrink:0}}/>}
               </div>
               <div style={{display:"flex",gap:8,marginTop:10}}><button onClick={()=>reviewItem(item,true)} style={{flex:1,background:"#D4A84320",border:"1px solid #D4A84360",color:"#D4A843",borderRadius:7,padding:"8px",fontWeight:700,cursor:"pointer"}}>Verify</button><button onClick={()=>reviewItem(item,false)} style={{flex:1,background:"#EF444418",border:"1px solid #EF444450",color:"#F87171",borderRadius:7,padding:"8px",fontWeight:700,cursor:"pointer"}}>Reject</button></div>
@@ -1671,31 +1729,31 @@ export default function HouseJobsApp(){
           <div className="manager-grid">
             <section className="hm-card hm-wide">
               <h3 style={{fontSize:12,color:"#EF4444",letterSpacing:".08em",marginBottom:9}}>OVERDUE ({overdueItems.length})</h3>
-              {overdueItems.length===0?<p style={{fontSize:12,color:"#64748B"}}>Nothing overdue.</p>:overdueItems.slice(0,12).map(item=><div key={`${item.type}-${item.week}-${item.id}`} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 0",borderBottom:"1px solid #3D2A6E"}}><div><div style={{fontSize:12,color:"#E2E8F0"}}>{item.name}</div><div style={{fontSize:10,color:"#64748B"}}>{item.week} • {(item.assigned||[]).join(", ")}</div></div><span style={{fontSize:10,color:"#EF4444",whiteSpace:"nowrap"}}>{formatDue(item.due)}</span></div>)}
+              {overdueItems.length===0?<p style={{fontSize:12,color:"#A0AEC3"}}>Nothing overdue.</p>:overdueItems.slice(0,12).map(item=><div key={`${item.type}-${item.week}-${item.id}`} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 0",borderBottom:"1px solid #364258"}}><div><div style={{fontSize:12,color:"#E2E8F0"}}>{item.name}</div><div style={{fontSize:10,color:"#A0AEC3"}}>{item.week} • {(item.assigned||[]).join(", ")}</div></div><span style={{fontSize:10,color:"#EF4444",whiteSpace:"nowrap"}}>{formatDue(item.due)}</span></div>)}
             </section>
             <section className="hm-card">
               <h3 style={{fontSize:12,color:"#F59E0B",letterSpacing:".08em",marginBottom:8}}>OPEN ISSUES</h3>
-              {openIssues.length===0?<p style={{fontSize:12,color:"#64748B"}}>None</p>:openIssues.slice(0,5).map(x=><button key={x.id} onClick={()=>setView("issues")} style={{display:"block",width:"100%",background:"none",border:"none",borderBottom:"1px solid #3D2A6E",padding:"7px 0",textAlign:"left",color:"#CBD5E1",fontSize:12,cursor:"pointer"}}><span style={{color:x.priority==="urgent"?"#EF4444":"#F59E0B",fontSize:9,fontWeight:700}}>{x.priority?.toUpperCase()} </span>{x.description}</button>)}
+              {openIssues.length===0?<p style={{fontSize:12,color:"#A0AEC3"}}>None</p>:openIssues.slice(0,5).map(x=><button key={x.id} onClick={()=>setView("issues")} style={{display:"block",width:"100%",background:"none",border:"none",borderBottom:"1px solid #364258",padding:"7px 0",textAlign:"left",color:"#CBD5E1",fontSize:12,cursor:"pointer"}}><span style={{color:x.priority==="urgent"?"#EF4444":"#F59E0B",fontSize:9,fontWeight:700}}>{x.priority?.toUpperCase()} </span>{x.description}</button>)}
             </section>
             <section className="hm-card">
               <h3 style={{fontSize:12,color:"#8B5CF6",letterSpacing:".08em",marginBottom:8}}>SUPPLIES</h3>
-              {supplyReports.length===0?<p style={{fontSize:12,color:"#64748B"}}>No shortages reported.</p>:supplyReports.slice(0,5).map((x,i)=><div key={i} style={{fontSize:12,color:"#CBD5E1",padding:"6px 0",borderBottom:"1px solid #3D2A6E"}}><span style={{color:"#F59E0B"}}>{x.entry.proof.supplyStatus.toUpperCase()}</span> • {x.entry.proof.supplyNote||x.name}</div>)}
+              {supplyReports.length===0?<p style={{fontSize:12,color:"#A0AEC3"}}>No shortages reported.</p>:supplyReports.slice(0,5).map((x,i)=><div key={i} style={{fontSize:12,color:"#CBD5E1",padding:"6px 0",borderBottom:"1px solid #364258"}}><span style={{color:"#F59E0B"}}>{x.entry.proof.supplyStatus.toUpperCase()}</span> • {x.entry.proof.supplyNote||x.name}</div>)}
             </section>
             <section className="hm-card hm-wide">
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><h3 style={{fontSize:12,color:"#F59E0B",letterSpacing:".08em"}}>KITCHEN ROTATION</h3><span style={{fontSize:11,color:"#94A3B8"}}>{kitchenStats.served.length}/{kitchenStats.all.length} served</span></div>
-              <div style={{height:7,background:"#1A1040",borderRadius:5,overflow:"hidden",marginBottom:10}}><div style={{height:"100%",width:`${kitchenStats.all.length?Math.round(kitchenStats.served.length/kitchenStats.all.length*100):0}%`,background:"linear-gradient(90deg,#F59E0B,#D4A843)"}}/></div>
-              <div style={{fontSize:11,color:"#64748B",marginBottom:5}}>Still waiting:</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{kitchenStats.waiting.length?kitchenStats.waiting.map(n=><span key={n} style={{fontSize:10,color:"#CBD5E1",background:"#1A1040",borderRadius:5,padding:"3px 6px"}}>{n}</span>):<span style={{fontSize:11,color:"#D4A843"}}>Everyone has served — next cycle can begin.</span>}</div>
+              <div style={{height:7,background:"#161C29",borderRadius:5,overflow:"hidden",marginBottom:10}}><div style={{height:"100%",width:`${kitchenStats.all.length?Math.round(kitchenStats.served.length/kitchenStats.all.length*100):0}%`,background:"linear-gradient(90deg,#F59E0B,#D4A843)"}}/></div>
+              <div style={{fontSize:11,color:"#A0AEC3",marginBottom:5}}>Still waiting:</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{kitchenStats.waiting.length?kitchenStats.waiting.map(n=><span key={n} style={{fontSize:10,color:"#CBD5E1",background:"#161C29",borderRadius:5,padding:"3px 6px"}}>{n}</span>):<span style={{fontSize:11,color:"#D4A843"}}>Everyone has served — next cycle can begin.</span>}</div>
             </section>
             <section className="hm-card hm-wide">
               <h3 style={{fontSize:12,color:"#3B82F6",letterSpacing:".08em",marginBottom:10}}>FAIRNESS</h3>
-              <div style={{overflowX:"auto"}}>{fairnessRows.map(row=><div key={row.name} style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,alignItems:"center",padding:"7px 0",borderBottom:"1px solid #3D2A6E",minWidth:350}}><span style={{fontSize:12,color:"#E2E8F0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</span><span title="Weekly" style={{fontSize:11,color:"#94A3B8",textAlign:"center"}}>{row.total}</span><span title="Sunday" style={{fontSize:11,color:"#A78BFA",textAlign:"center"}}>{row.sunday}</span><span title="Kitchen" style={{fontSize:11,color:"#F59E0B",textAlign:"center"}}>{row.kitchen}</span><span title="Bathrooms" style={{fontSize:11,color:"#06B6D4",textAlign:"center"}}>{row.bathrooms}</span><span title="Project points" style={{fontSize:11,color:"#EC4899",textAlign:"center"}}>{row.projectPoints}</span></div>)}</div>
-              <div style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,marginTop:7,minWidth:350,fontSize:9,color:"#64748B"}}><span></span><span>WK</span><span>SUN</span><span>KIT</span><span>BATH</span><span>PTS</span></div>
+              <div style={{overflowX:"auto"}}>{fairnessRows.map(row=><div key={row.name} style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,alignItems:"center",padding:"7px 0",borderBottom:"1px solid #364258",minWidth:350}}><span style={{fontSize:12,color:"#E2E8F0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</span><span title="Weekly" style={{fontSize:11,color:"#94A3B8",textAlign:"center"}}>{row.total}</span><span title="Sunday" style={{fontSize:11,color:"#A78BFA",textAlign:"center"}}>{row.sunday}</span><span title="Kitchen" style={{fontSize:11,color:"#F59E0B",textAlign:"center"}}>{row.kitchen}</span><span title="Bathrooms" style={{fontSize:11,color:"#06B6D4",textAlign:"center"}}>{row.bathrooms}</span><span title="Project points" style={{fontSize:11,color:"#EC4899",textAlign:"center"}}>{row.projectPoints}</span></div>)}</div>
+              <div style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,marginTop:7,fontSize:9,color:"#A0AEC3"}}><span></span><span>WK</span><span>SUN</span><span>KIT</span><span>BATH</span><span>PTS</span></div>
             </section>
             <section className="hm-card hm-wide">
               <h3 style={{fontSize:12,color:"#94A3B8",letterSpacing:".08em",marginBottom:10}}>DEADLINES</h3>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                <label style={{fontSize:11,color:"#94A3B8"}}>Weekly due<select value={houseSettings.weeklyDueDay} onChange={e=>saveHouseSettings({...houseSettings,weeklyDueDay:Number(e.target.value)})} style={{display:"block",width:"100%",marginTop:4,background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:7,padding:"8px"}}>{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input type="time" value={houseSettings.weeklyDueTime} onChange={e=>saveHouseSettings({...houseSettings,weeklyDueTime:e.target.value})} style={{display:"block",width:"100%",marginTop:5,background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:7,padding:"8px"}}/></label>
-                <label style={{fontSize:11,color:"#94A3B8"}}>Sunday due<select value={houseSettings.sundayDueDay} onChange={e=>saveHouseSettings({...houseSettings,sundayDueDay:Number(e.target.value)})} style={{display:"block",width:"100%",marginTop:4,background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:7,padding:"8px"}}>{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input type="time" value={houseSettings.sundayDueTime} onChange={e=>saveHouseSettings({...houseSettings,sundayDueTime:e.target.value})} style={{display:"block",width:"100%",marginTop:5,background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:7,padding:"8px"}}/></label>
+                <label style={{fontSize:11,color:"#94A3B8"}}>Weekly due<select value={houseSettings.weeklyDueDay} onChange={e=>saveHouseSettings({...houseSettings,weeklyDueDay:Number(e.target.value)})} style={{display:"block",width:"100%",marginTop:4,background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:7,padding:"8px"}}>{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input type="time" value={houseSettings.weeklyDueTime} onChange={e=>saveHouseSettings({...houseSettings,weeklyDueTime:e.target.value})} style={{display:"block",width:"100%",marginTop:5,background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:7,padding:"8px"}}/></label>
+                <label style={{fontSize:11,color:"#94A3B8"}}>Sunday due<select value={houseSettings.sundayDueDay} onChange={e=>saveHouseSettings({...houseSettings,sundayDueDay:Number(e.target.value)})} style={{display:"block",width:"100%",marginTop:4,background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:7,padding:"8px"}}>{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input type="time" value={houseSettings.sundayDueTime} onChange={e=>saveHouseSettings({...houseSettings,sundayDueTime:e.target.value})} style={{display:"block",width:"100%",marginTop:5,background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:7,padding:"8px"}}/></label>
               </div>
             </section>
           </div>
@@ -1705,9 +1763,9 @@ export default function HouseJobsApp(){
         {view==="setup"&&!adminUnlocked&&<div className="fu" style={{maxWidth:340,margin:"40px auto",textAlign:"center"}}>
           <div style={{width:64,height:64,borderRadius:16,background:"#F59E0B18",border:"1px solid #F59E0B40",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",fontSize:28}}>🔒</div>
           <h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9",marginBottom:6}}>House Manager Access</h2>
-          <p style={{fontSize:13,color:"#64748B",marginBottom:24}}>Enter the admin password to edit settings.</p>
-          <Input type="email" value={adminEmail} onChange={v=>{setAdminEmail(v);setPwError(false);}} placeholder="Manager email" style={{textAlign:"center",marginBottom:8,borderColor:pwError?"#EF4444":"#3D2A6E"}}/>
-          <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Manager password" style={{textAlign:"center",fontSize:16,letterSpacing:"0.1em",marginBottom:12,borderColor:pwError?"#EF4444":"#3D2A6E"}}/>
+          <p style={{fontSize:13,color:"#A0AEC3",marginBottom:24}}>Enter the admin password to edit settings.</p>
+          <Input type="email" value={adminEmail} onChange={v=>{setAdminEmail(v);setPwError(false);}} placeholder="Manager email" style={{textAlign:"center",marginBottom:8,borderColor:pwError?"#EF4444":"#364258"}}/>
+          <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Manager password" style={{textAlign:"center",fontSize:16,letterSpacing:"0.1em",marginBottom:12,borderColor:pwError?"#EF4444":"#364258"}}/>
           {pwError&&<p style={{fontSize:12,color:"#EF4444",marginBottom:12}}>Could not sign in. Check the manager account and password.</p>}
           <button onClick={checkPassword} disabled={adminLoading} style={{width:"100%",background:"linear-gradient(135deg,#F59E0B,#D97706)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:adminLoading?.6:1}}>{adminLoading?"Signing in...":"Unlock"}</button>
         </div>}
@@ -1715,14 +1773,14 @@ export default function HouseJobsApp(){
         {view==="setup"&&adminUnlocked&&<div className="fu">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
             <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9"}}>Weekly Setup</h2>
-            <button onClick={lockAdmin} style={{background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🔒 Lock</button>
+            <button onClick={lockAdmin} style={{background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🔒 Lock</button>
           </div>
           <div style={{marginBottom:20}}><label style={{fontSize:12,color:"#94A3B8",fontWeight:600,display:"block",marginBottom:6}}>SEMESTER NAME</label><Input value={semesterName} onChange={setSemesterName} placeholder="e.g. Spring 2027"/></div>
           <div style={{display:"flex",gap:6,marginBottom:16}}>
-            {[{key:"brothers",label:`Brothers (${brothers.length})`},{key:"jobs",label:`Jobs (${jobs.length})`},{key:"weeks",label:`Weeks (${weeks.length})`}].map(t=><button key={t.key} onClick={()=>setSetupTab(t.key)} style={{flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:setupTab===t.key?"#F59E0B18":"#261850",border:`1px solid ${setupTab===t.key?"#F59E0B":"#3D2A6E"}`,color:setupTab===t.key?"#F59E0B":"#94A3B8"}}>{t.label}</button>)}
+            {[{key:"brothers",label:`Brothers (${brothers.length})`},{key:"jobs",label:`Jobs (${jobs.length})`},{key:"weeks",label:`Weeks (${weeks.length})`}].map(t=><button key={t.key} onClick={()=>setSetupTab(t.key)} style={{flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:setupTab===t.key?"#F59E0B18":"#1C2332",border:`1px solid ${setupTab===t.key?"#F59E0B":"#364258"}`,color:setupTab===t.key?"#F59E0B":"#94A3B8"}}>{t.label}</button>)}
           </div>
           {setupTab==="brothers"&&<div>
-            <p style={{fontSize:12,color:"#64748B",marginBottom:12,lineHeight:1.5}}>Add brothers who live in house from the pin roster. Assign their floor for job rotation.</p>
+            <p style={{fontSize:12,color:"#A0AEC3",marginBottom:12,lineHeight:1.5}}>Add brothers who live in house from the pin roster. Assign their floor for job rotation.</p>
             {(()=>{
               const allPinNames=[...new Set([...evenPins,...oddPins])].sort();
               const alreadyAdded=new Set(brotherNames);
@@ -1733,32 +1791,32 @@ export default function HouseJobsApp(){
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   <div style={{flex:1,minWidth:140,position:"relative"}}>
                     <Input value={editName} onChange={setEditName} placeholder="Search pin roster to add..." style={{}}/>
-                    {query&&filtered.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#261850",border:"1px solid #3D2A6E",borderRadius:"0 0 8px 8px",maxHeight:180,overflowY:"auto",zIndex:10}}>
-                      {filtered.slice(0,10).map(name=><button key={name} onClick={()=>{setBrothers([...brothers,{name,floor:editFloor}]);setEditName("");}} style={{display:"flex",justifyContent:"space-between",width:"100%",padding:"8px 12px",background:"none",border:"none",borderBottom:"1px solid #1A1040",color:"#E2E8F0",fontSize:13,textAlign:"left",cursor:"pointer",fontFamily:"inherit",alignItems:"center"}}
-                        onMouseEnter={e=>e.target.style.background="#3D2A6E"} onMouseLeave={e=>e.target.style.background="none"}>
+                    {query&&filtered.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1C2332",border:"1px solid #364258",borderRadius:"0 0 8px 8px",maxHeight:180,overflowY:"auto",zIndex:10}}>
+                      {filtered.slice(0,10).map(name=><button key={name} onClick={()=>{setBrothers([...brothers,{name,floor:editFloor}]);setEditName("");}} style={{display:"flex",justifyContent:"space-between",width:"100%",padding:"8px 12px",background:"none",border:"none",borderBottom:"1px solid #161C29",color:"#E2E8F0",fontSize:13,textAlign:"left",cursor:"pointer",fontFamily:"inherit",alignItems:"center"}}
+                        onMouseEnter={e=>e.target.style.background="#364258"} onMouseLeave={e=>e.target.style.background="none"}>
                         <span>{name}</span>
                         <span style={{fontSize:10,color:evenPins.includes(name)?"#8B5CF6":"#06B6D4"}}>{evenPins.includes(name)?"EVEN":"ODD"}</span>
                       </button>)}
                       {!alreadyAdded.has(editName.trim())&&<button onClick={()=>{setBrothers([...brothers,{name:editName.trim(),floor:editFloor}]);setEditName("");}} style={{display:"flex",justifyContent:"space-between",width:"100%",padding:"8px 12px",background:"none",border:"none",color:"#F59E0B",fontSize:12,textAlign:"left",cursor:"pointer",fontFamily:"inherit",alignItems:"center"}}
-                        onMouseEnter={e=>e.target.style.background="#3D2A6E"} onMouseLeave={e=>e.target.style.background="none"}>
+                        onMouseEnter={e=>e.target.style.background="#364258"} onMouseLeave={e=>e.target.style.background="none"}>
                         <span>+ Add "{editName.trim()}" manually</span>
                       </button>}
                     </div>}
-                    {query&&filtered.length===0&&!alreadyAdded.has(editName.trim())&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#261850",border:"1px solid #3D2A6E",borderRadius:"0 0 8px 8px",zIndex:10}}>
+                    {query&&filtered.length===0&&!alreadyAdded.has(editName.trim())&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1C2332",border:"1px solid #364258",borderRadius:"0 0 8px 8px",zIndex:10}}>
                       <button onClick={()=>{setBrothers([...brothers,{name:editName.trim(),floor:editFloor}]);setEditName("");}} style={{display:"block",width:"100%",padding:"10px 12px",background:"none",border:"none",color:"#F59E0B",fontSize:13,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}
-                        onMouseEnter={e=>e.target.style.background="#3D2A6E"} onMouseLeave={e=>e.target.style.background="none"}>+ Add "{editName.trim()}" manually</button>
+                        onMouseEnter={e=>e.target.style.background="#364258"} onMouseLeave={e=>e.target.style.background="none"}>+ Add "{editName.trim()}" manually</button>
                     </div>}
                   </div>
-                  <select value={editFloor} onChange={e=>setEditFloor(e.target.value)} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 10px",fontSize:13,fontFamily:"inherit"}}>
+                  <select value={editFloor} onChange={e=>setEditFloor(e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 10px",fontSize:13,fontFamily:"inherit"}}>
                     <option value="basement">Basement</option><option value="first">1st Floor</option><option value="second">2nd Floor</option><option value="third">3rd Floor</option>
                   </select>
                 </div>
-                {available.length===0&&<p style={{fontSize:11,color:"#64748B",marginTop:6}}>All brothers from pin roster have been added.</p>}
+                {available.length===0&&<p style={{fontSize:11,color:"#A0AEC3",marginTop:6}}>All brothers from pin roster have been added.</p>}
               </div>;
             })()}
             <div style={{display:"flex",flexDirection:"column",gap:4}}>
               {brothers.map((b,i)=>{const bo=typeof b==="string"?{name:b,floor:"first"}:b;const fc=AREA_META[bo.floor]||{color:"#6B7280",label:"?"};const pinGroup=evenPins.includes(bo.name)?"EVEN":oddPins.includes(bo.name)?"ODD":"";return(
-                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#261850",borderRadius:8,padding:"8px 12px",border:"1px solid #3D2A6E"}}>
+                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1C2332",borderRadius:8,padding:"8px 12px",border:"1px solid #364258"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:fc.color}}/>
                     <span style={{fontSize:14,color:"#CBD5E1"}}>{bo.name}</span>
@@ -1766,7 +1824,7 @@ export default function HouseJobsApp(){
                     {pinGroup&&<span style={{fontSize:9,color:pinGroup==="EVEN"?"#8B5CF6":"#06B6D4"}}>{pinGroup}</span>}
                   </div>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    <select value={bo.floor} onChange={e=>{const n=[...brothers];n[i]=typeof b==="string"?{name:b,floor:e.target.value}:{...b,floor:e.target.value};setBrothers(n);}} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:4,padding:"2px 20px 2px 6px",fontSize:11,fontFamily:"inherit"}}>
+                    <select value={bo.floor} onChange={e=>{const n=[...brothers];n[i]=typeof b==="string"?{name:b,floor:e.target.value}:{...b,floor:e.target.value};setBrothers(n);}} style={{background:"#161C29",border:"1px solid #364258",color:"#94A3B8",borderRadius:4,padding:"2px 20px 2px 6px",fontSize:11,fontFamily:"inherit"}}>
                       <option value="basement">BSMT</option><option value="first">1F</option><option value="second">2F</option><option value="third">3F</option>
                     </select>
                     <button onClick={()=>setBrothers(brothers.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
@@ -1775,32 +1833,32 @@ export default function HouseJobsApp(){
             </div>
           </div>}
           {setupTab==="jobs"&&<div>
-            <div style={{background:"#261850",borderRadius:10,padding:14,border:"1px solid #3D2A6E",marginBottom:12}}>
-              <div style={{display:"flex",gap:8,marginBottom:8}}><Input value={editJobName} onChange={setEditJobName} placeholder="Job name..." style={{flex:1}}/><select value={editJobArea} onChange={e=>setEditJobArea(e.target.value)} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 14px",fontSize:13,fontFamily:"inherit"}}>{AREA_KEYS.map(k=><option key={k} value={k}>{AREA_META[k].label}</option>)}</select></div>
+            <div style={{background:"#1C2332",borderRadius:10,padding:14,border:"1px solid #364258",marginBottom:12}}>
+              <div style={{display:"flex",gap:8,marginBottom:8}}><Input value={editJobName} onChange={setEditJobName} placeholder="Job name..." style={{flex:1}}/><select value={editJobArea} onChange={e=>setEditJobArea(e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 14px",fontSize:13,fontFamily:"inherit"}}>{AREA_KEYS.map(k=><option key={k} value={k}>{AREA_META[k].label}</option>)}</select></div>
               <Input value={editJobDesc} onChange={setEditJobDesc} placeholder="Description..." style={{marginBottom:8}}/>
-              <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"#94A3B8"}}>People:</label><select value={editJobPeople} onChange={e=>setEditJobPeople(+e.target.value)} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></div><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobRotating} onChange={e=>{setEditJobRotating(e.target.checked);if(e.target.checked)setEditJobFloorRotate(false);}} style={{accentColor:"#F59E0B"}}/> Rotating</label><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobFloorRotate} onChange={e=>{setEditJobFloorRotate(e.target.checked);if(e.target.checked)setEditJobRotating(false);}} style={{accentColor:"#06B6D4"}}/> Floor Rotate</label><div style={{flex:1}}/><SmallBtn onClick={()=>{if(editJobName.trim()){setJobs([...jobs,{id:editJobName.trim().toLowerCase().replace(/\s+/g,"_")+"_"+Date.now(),name:editJobName.trim(),area:editJobArea,people:editJobPeople,desc:editJobDesc.trim(),rotating:editJobRotating,floorRotate:editJobFloorRotate}]);setEditJobName("");setEditJobDesc("");setEditJobPeople(1);setEditJobRotating(false);setEditJobFloorRotate(false);}}}>+ Add</SmallBtn></div>
+              <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"#94A3B8"}}>People:</label><select value={editJobPeople} onChange={e=>setEditJobPeople(+e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></div><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobRotating} onChange={e=>{setEditJobRotating(e.target.checked);if(e.target.checked)setEditJobFloorRotate(false);}} style={{accentColor:"#F59E0B"}}/> Rotating</label><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobFloorRotate} onChange={e=>{setEditJobFloorRotate(e.target.checked);if(e.target.checked)setEditJobRotating(false);}} style={{accentColor:"#06B6D4"}}/> Floor Rotate</label><div style={{flex:1}}/><SmallBtn onClick={()=>{if(editJobName.trim()){setJobs([...jobs,{id:editJobName.trim().toLowerCase().replace(/\s+/g,"_")+"_"+Date.now(),name:editJobName.trim(),area:editJobArea,people:editJobPeople,desc:editJobDesc.trim(),rotating:editJobRotating,floorRotate:editJobFloorRotate}]);setEditJobName("");setEditJobDesc("");setEditJobPeople(1);setEditJobRotating(false);setEditJobFloorRotate(false);}}}>+ Add</SmallBtn></div>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:4}}>{jobs.map((j,i)=>{
               const isEd=editingJobIdx===i;
               const fc=AREA_META[j.area]||{color:"#6B7280"};
-              return<div key={j.id} style={{background:"#261850",borderRadius:8,padding:isEd?"12px":"8px 12px",border:`1px solid ${isEd?"#F59E0B":"#3D2A6E"}`}}>
+              return<div key={j.id} style={{background:"#1C2332",borderRadius:8,padding:isEd?"12px":"8px 12px",border:`1px solid ${isEd?"#F59E0B":"#364258"}`}}>
                 {!isEd?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setEditingJobIdx(i)}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:fc.color,flexShrink:0}}/>
                     <span style={{fontSize:13,color:"#CBD5E1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.name}</span>
-                    <span style={{fontSize:11,color:"#64748B"}}>×{j.people}</span>
+                    <span style={{fontSize:11,color:"#A0AEC3"}}>×{j.people}</span>
                     {j.rotating&&<span style={{fontSize:10,color:"#F59E0B"}}>ROT</span>}
                     {j.floorRotate&&<span style={{fontSize:10,color:"#06B6D4"}}>FLOOR</span>}
                   </div>
                   <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
-                    <button onClick={()=>setEditingJobIdx(i)} style={{background:"none",border:"none",color:"#64748B",cursor:"pointer",fontSize:13,padding:"0 4px"}}>✏️</button>
+                    <button onClick={()=>setEditingJobIdx(i)} style={{background:"none",border:"none",color:"#A0AEC3",cursor:"pointer",fontSize:13,padding:"0 4px"}}>✏️</button>
                     <button onClick={()=>setJobs(jobs.filter((_,k)=>k!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
                   </div>
                 </div>
                 :<div style={{display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"flex",gap:8}}>
                     <Input value={j.name} onChange={v=>{const n=[...jobs];n[i]={...n[i],name:v};setJobs(n);}} placeholder="Job name" style={{flex:1,padding:"8px 10px",fontSize:13}}/>
-                    <select value={j.area} onChange={e=>{const n=[...jobs];n[i]={...n[i],area:e.target.value};setJobs(n);}} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 8px",fontSize:12,fontFamily:"inherit"}}>
+                    <select value={j.area} onChange={e=>{const n=[...jobs];n[i]={...n[i],area:e.target.value};setJobs(n);}} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 8px",fontSize:12,fontFamily:"inherit"}}>
                       {AREA_KEYS.map(k=><option key={k} value={k}>{AREA_META[k].label}</option>)}
                     </select>
                   </div>
@@ -1808,7 +1866,7 @@ export default function HouseJobsApp(){
                   <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                     <div style={{display:"flex",alignItems:"center",gap:4}}>
                       <label style={{fontSize:11,color:"#94A3B8"}}>People:</label>
-                      <select value={j.people} onChange={e=>{const n=[...jobs];n[i]={...n[i],people:+e.target.value};setJobs(n);}} style={{background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
+                      <select value={j.people} onChange={e=>{const n=[...jobs];n[i]={...n[i],people:+e.target.value};setJobs(n);}} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
                         {[1,2,3,4].map(x=><option key={x} value={x}>{x}</option>)}
                       </select>
                     </div>
@@ -1829,7 +1887,7 @@ export default function HouseJobsApp(){
           {setupTab==="weeks"&&<div>
             <div className="hm-card" style={{marginBottom:14}}>
               <h3 style={{fontSize:13,color:"#D4A843",marginBottom:5}}>Automatic semester setup</h3>
-              <p style={{fontSize:11,color:"#64748B",lineHeight:1.5,marginBottom:10}}>Choose the first Monday and last day. Add any date during a break week to skip that entire week.</p>
+              <p style={{fontSize:11,color:"#A0AEC3",lineHeight:1.5,marginBottom:10}}>Choose the first Monday and last day. Add any date during a break week to skip that entire week.</p>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
                 <label style={{fontSize:11,color:"#94A3B8"}}>First week<Input type="date" value={semesterStart} onChange={setSemesterStart} style={{marginTop:4,padding:"8px"}}/></label>
                 <label style={{fontSize:11,color:"#94A3B8"}}>Last day<Input type="date" value={semesterEnd} onChange={setSemesterEnd} style={{marginTop:4,padding:"8px"}}/></label>
@@ -1837,26 +1895,26 @@ export default function HouseJobsApp(){
               <Input value={semesterExcluded} onChange={setSemesterExcluded} placeholder="Break dates: 2027-03-15, 2027-04-02" style={{marginBottom:8}}/>
               <button onClick={()=>{const generated=generateWeekLabels(semesterStart,semesterEnd,semesterExcluded);if(!generated.length){alert("Choose a valid start and end date.");return;}setWeeks(generated);}} style={{width:"100%",background:"#D4A84320",border:"1px solid #D4A84360",color:"#D4A843",borderRadius:8,padding:"10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Generate semester weeks</button>
             </div>
-            <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}><Input value={editWeekStart} onChange={setEditWeekStart} placeholder="M/D" style={{flex:"1 1 90px"}}/><span style={{color:"#64748B"}}>–</span><Input value={editWeekEnd} onChange={setEditWeekEnd} placeholder="M/D" style={{flex:"1 1 90px"}}/><SmallBtn onClick={()=>{if(editWeekStart.trim()&&editWeekEnd.trim()){setWeeks([...weeks,`${editWeekStart.trim()}-${editWeekEnd.trim()}`]);setEditWeekStart("");setEditWeekEnd("");}}}>+ Add</SmallBtn></div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>{weeks.map((w,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:i===currentWeekIdx?"#D4A84318":"#261850",borderRadius:8,padding:"8px 12px",border:`1px solid ${i===currentWeekIdx?"#D4A843":"#3D2A6E"}`}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:11,color:"#64748B",fontFamily:"'Space Mono',monospace",width:24}}>{i+1}</span><span style={{fontSize:13,color:"#CBD5E1",fontFamily:"'Space Mono',monospace"}}>{w}</span></div><button onClick={()=>setWeeks(weeks.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div>
+            <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}><Input value={editWeekStart} onChange={setEditWeekStart} placeholder="M/D" style={{flex:"1 1 90px"}}/><span style={{color:"#A0AEC3"}}>–</span><Input value={editWeekEnd} onChange={setEditWeekEnd} placeholder="M/D" style={{flex:"1 1 90px"}}/><SmallBtn onClick={()=>{if(editWeekStart.trim()&&editWeekEnd.trim()){setWeeks([...weeks,`${editWeekStart.trim()}-${editWeekEnd.trim()}`]);setEditWeekStart("");setEditWeekEnd("");}}}>+ Add</SmallBtn></div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>{weeks.map((w,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:i===currentWeekIdx?"#D4A84318":"#1C2332",borderRadius:8,padding:"8px 12px",border:`1px solid ${i===currentWeekIdx?"#D4A843":"#364258"}`}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:11,color:"#A0AEC3",fontFamily:"'Space Mono',monospace",width:24}}>{i+1}</span><span style={{fontSize:13,color:"#CBD5E1",fontFamily:"'Space Mono',monospace"}}>{w}</span></div><button onClick={()=>setWeeks(weeks.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div>
             <div className="hm-card" style={{marginTop:16}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}><div><h3 style={{fontSize:13,color:"#3B82F6"}}>Semester archives</h3><p style={{fontSize:10,color:"#64748B",marginTop:2}}>Snapshots preserve assignments, reports, proof, and settings.</p></div><SmallBtn onClick={archiveSemester} color="#3B82F6">{archiveBusy?"Saving...":"Archive now"}</SmallBtn></div>
-              {Object.values(archives).length===0?<p style={{fontSize:11,color:"#64748B"}}>No archived semesters yet.</p>:Object.values(archives).sort((a,b)=>String(b.archivedAt).localeCompare(String(a.archivedAt))).map(a=><div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid #3D2A6E"}}><div><div style={{fontSize:12,color:"#E2E8F0"}}>{a.name}</div><div style={{fontSize:10,color:"#64748B"}}>{new Date(a.archivedAt).toLocaleString()}</div></div><SmallBtn onClick={()=>downloadArchive(a)} color="#8B5CF6">Download JSON</SmallBtn></div>)}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}><div><h3 style={{fontSize:13,color:"#3B82F6"}}>Semester archives</h3><p style={{fontSize:10,color:"#A0AEC3",marginTop:2}}>Snapshots preserve assignments, reports, proof, and settings.</p></div><SmallBtn onClick={archiveSemester} color="#3B82F6">{archiveBusy?"Saving...":"Archive now"}</SmallBtn></div>
+              {Object.values(archives).length===0?<p style={{fontSize:11,color:"#A0AEC3"}}>No archived semesters yet.</p>:Object.values(archives).sort((a,b)=>String(b.archivedAt).localeCompare(String(a.archivedAt))).map(a=><div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid #364258"}}><div><div style={{fontSize:12,color:"#E2E8F0"}}>{a.name}</div><div style={{fontSize:10,color:"#A0AEC3"}}>{new Date(a.archivedAt).toLocaleString()}</div></div><SmallBtn onClick={()=>downloadArchive(a)} color="#8B5CF6">Download JSON</SmallBtn></div>)}
             </div>
           </div>}
           <div style={{marginTop:24,display:"flex",flexDirection:"column",gap:10}}>
             {!confirmRegen?<button onClick={()=>setConfirmRegen(true)} disabled={saving} style={{background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#FFF",borderRadius:10,padding:"14px 20px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:saving?.6:1}}>{saving?"Saving...":"🔄 Regenerate All"}</button>
-            :<div style={{background:"#7F1D1D20",border:"1px solid #EF444450",borderRadius:10,padding:16}}><p style={{fontSize:13,color:"#FCA5A5",marginBottom:12,lineHeight:1.5}}>This erases ALL tracking and creates fresh assignments. Sure?</p><div style={{display:"flex",gap:8}}><button onClick={regenerate} disabled={saving} style={{flex:1,background:"#EF4444",border:"none",color:"#FFF",borderRadius:8,padding:"10px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{saving?"...":"Yes"}</button><button onClick={()=>setConfirmRegen(false)} style={{flex:1,background:"#261850",border:"1px solid #3D2A6E",color:"#94A3B8",borderRadius:8,padding:"10px",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button></div></div>}
+            :<div style={{background:"#7F1D1D20",border:"1px solid #EF444450",borderRadius:10,padding:16}}><p style={{fontSize:13,color:"#FCA5A5",marginBottom:12,lineHeight:1.5}}>This erases ALL tracking and creates fresh assignments. Sure?</p><div style={{display:"flex",gap:8}}><button onClick={regenerate} disabled={saving} style={{flex:1,background:"#EF4444",border:"none",color:"#FFF",borderRadius:8,padding:"10px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{saving?"...":"Yes"}</button><button onClick={()=>setConfirmRegen(false)} style={{flex:1,background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:8,padding:"10px",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button></div></div>}
           </div>
         </div>}
 
         {completionDraft&&<div className="proof-modal" role="dialog" aria-modal="true" onClick={e=>{if(e.target===e.currentTarget)setCompletionDraft(null);}}>
           <div className="proof-sheet">
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:14}}><div><div style={{fontSize:10,color:"#D4A843",fontWeight:700,letterSpacing:".08em"}}>SUBMIT FOR VERIFICATION</div><h2 style={{fontSize:18,color:"#F8FAFC",marginTop:4}}>{completionDraft.name}</h2><p style={{fontSize:11,color:"#64748B",marginTop:3}}>{completionDraft.week}</p></div><button onClick={()=>setCompletionDraft(null)} aria-label="Close" style={{background:"none",border:"none",color:"#94A3B8",fontSize:24,cursor:"pointer",lineHeight:1}}>×</button></div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:14}}><div><div style={{fontSize:10,color:"#D4A843",fontWeight:700,letterSpacing:".08em"}}>SUBMIT FOR VERIFICATION</div><h2 style={{fontSize:18,color:"#F8FAFC",marginTop:4}}>{completionDraft.name}</h2><p style={{fontSize:11,color:"#A0AEC3",marginTop:3}}>{completionDraft.week}</p></div><button onClick={()=>setCompletionDraft(null)} aria-label="Close" style={{background:"none",border:"none",color:"#94A3B8",fontSize:24,cursor:"pointer",lineHeight:1}}>×</button></div>
             {!myName&&<div style={{background:"#F59E0B12",border:"1px solid #F59E0B40",borderRadius:8,padding:9,fontSize:11,color:"#F59E0B",marginBottom:10}}>Choose your name in the Me tab so the submission records who completed it.</div>}
-            <textarea value={proofNote} onChange={e=>setProofNote(e.target.value)} placeholder="Completion note (optional)" rows={3} style={{width:"100%",resize:"vertical",background:"#1A1040",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:9}}/>
-            <div style={{background:"#1A1040",borderRadius:9,padding:10,marginBottom:12}}><label style={{fontSize:11,color:"#94A3B8",display:"block",marginBottom:6}}>Supplies for this job</label><select value={supplyStatus} onChange={e=>setSupplyStatus(e.target.value)} style={{width:"100%",background:"#261850",border:"1px solid #3D2A6E",color:"#E2E8F0",borderRadius:7,padding:"9px",fontFamily:"inherit",marginBottom:supplyStatus==="ok"?0:8}}><option value="ok">All stocked</option><option value="low">Running low</option><option value="out">Out of supplies</option></select>{supplyStatus!=="ok"&&<Input value={supplyNote} onChange={setSupplyNote} placeholder="What needs restocking?"/>}</div>
-            <button onClick={submitCompletion} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#140E2A",borderRadius:10,padding:"13px",fontSize:14,fontWeight:800,cursor:"pointer"}}>Mark done and send to manager</button>
+            <textarea value={proofNote} onChange={e=>setProofNote(e.target.value)} placeholder="Completion note (optional)" rows={3} style={{width:"100%",resize:"vertical",background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:9}}/>
+            <div style={{background:"#161C29",borderRadius:9,padding:10,marginBottom:12}}><label style={{fontSize:11,color:"#94A3B8",display:"block",marginBottom:6}}>Supplies for this job</label><select value={supplyStatus} onChange={e=>setSupplyStatus(e.target.value)} style={{width:"100%",background:"#1C2332",border:"1px solid #364258",color:"#E2E8F0",borderRadius:7,padding:"9px",fontFamily:"inherit",marginBottom:supplyStatus==="ok"?0:8}}><option value="ok">All stocked</option><option value="low">Running low</option><option value="out">Out of supplies</option></select>{supplyStatus!=="ok"&&<Input value={supplyNote} onChange={setSupplyNote} placeholder="What needs restocking?"/>}</div>
+            <button onClick={submitCompletion} disabled={completionBusy} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#10131C",borderRadius:10,padding:"13px",fontSize:14,fontWeight:800,cursor:"pointer"}}>{completionBusy?"Submitting…":"Mark done and send to manager"}</button>
           </div>
         </div>}
 
