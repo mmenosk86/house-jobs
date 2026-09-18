@@ -352,11 +352,11 @@ async function initFirebase(){
     firebaseReady=true;return true;
   }catch(e){console.error("Firebase initialization failed:",e);return false;}
 }
-async function fbSet(p,d){if(!firebaseReady)return;const{ref,set}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return set(ref(db,p),d);}
-async function fbUpdate(p,d){if(!firebaseReady)return;const{ref,update}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return update(ref(db,p),d);}
-async function fbTransaction(p,updater){if(!firebaseReady)return null;const{ref,runTransaction}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return runTransaction(ref(db,p),updater);}
-async function fbGet(p){if(!firebaseReady)return null;const{ref,get}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");const s=await get(ref(db,p));return s.exists()?s.val():null;}
-async function fbOnValue(p,cb,onError){if(!firebaseReady)return()=>{};const{ref,onValue}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return onValue(ref(db,p),s=>{cb(s.exists()?s.val():null);},onError);}
+async function fbSet(p,d){if(!firebaseReady)return;const{ref,set}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return set(p?ref(db,p):ref(db),d);}
+async function fbUpdate(p,d){if(!firebaseReady)return;const{ref,update}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return update(p?ref(db,p):ref(db),d);}
+async function fbTransaction(p,updater){if(!firebaseReady)return null;const{ref,runTransaction}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return runTransaction(p?ref(db,p):ref(db),updater);}
+async function fbGet(p){if(!firebaseReady)return null;const{ref,get}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");const s=await get(p?ref(db,p):ref(db));return s.exists()?s.val():null;}
+async function fbOnValue(p,cb,onError){if(!firebaseReady)return()=>{};const{ref,onValue}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return onValue(p?ref(db,p):ref(db),s=>{cb(s.exists()?s.val():null);},onError);}
 const OPS_API={get:fbGet,set:fbSet,update:fbUpdate,transaction:fbTransaction,subscribe:fbOnValue};
 async function fbOnAuth(cb){if(!auth)return()=>{};const{onAuthStateChanged}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js");return onAuthStateChanged(auth,cb);}
 async function fbWriteUser(){
@@ -373,7 +373,8 @@ function completionErrorText(error){
   if(code.includes("permission")||message.toLowerCase().includes("permission_denied"))return"Firebase rejected this submission. Refresh the app and try once more. If it still fails, send the manager error code: permission-denied.";
   if(code.includes("network")||code.includes("unavailable")||message.toLowerCase().includes("network"))return"The app could not reach Firebase. Check your connection and try again.";
   if(message.startsWith("This job is already"))return message;
-  return`Could not submit this job${code?` (${code})`:""}. Refresh and try again.`;
+  const detail=(message||String(error||"")).slice(0,180);
+  return`Could not submit this job${code?` (${code})`:""}.${detail?` ${detail}`:" Refresh and try again."}`;
 }
 // ─── COMPONENTS ───
 function StatusBadge({status,onClick,disabled}){const c=STATUS_CONFIG[status];return<button onClick={disabled?undefined:onClick} style={{background:c.bg,border:`1.5px solid ${c.border}`,color:c.text,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,cursor:disabled?"default":"pointer",fontFamily:"inherit",opacity:disabled?.7:1}}>{c.label}</button>;}
