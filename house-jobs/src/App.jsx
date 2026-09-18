@@ -359,6 +359,22 @@ async function fbGet(p){if(!firebaseReady)return null;const{ref,get}=await impor
 async function fbOnValue(p,cb,onError){if(!firebaseReady)return()=>{};const{ref,onValue}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return onValue(ref(db,p),s=>{cb(s.exists()?s.val():null);},onError);}
 const OPS_API={get:fbGet,set:fbSet,update:fbUpdate,transaction:fbTransaction,subscribe:fbOnValue};
 async function fbOnAuth(cb){if(!auth)return()=>{};const{onAuthStateChanged}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js");return onAuthStateChanged(auth,cb);}
+async function fbWriteUser(){
+  if(!firebaseReady||!auth)throw new Error("Firebase is not connected.");
+  if(!auth.currentUser){
+    const{signInAnonymously}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js");
+    await signInAnonymously(auth);
+  }
+  if(!auth.currentUser)throw new Error("Firebase sign-in did not finish.");
+  return auth.currentUser;
+}
+function completionErrorText(error){
+  const code=String(error?.code||"").toLowerCase(),message=String(error?.message||"");
+  if(code.includes("permission")||message.toLowerCase().includes("permission_denied"))return"Firebase rejected this submission. Refresh the app and try once more. If it still fails, send the manager error code: permission-denied.";
+  if(code.includes("network")||code.includes("unavailable")||message.toLowerCase().includes("network"))return"The app could not reach Firebase. Check your connection and try again.";
+  if(message.startsWith("This job is already"))return message;
+  return`Could not submit this job${code?` (${code})`:""}. Refresh and try again.`;
+}
 // ─── COMPONENTS ───
 function StatusBadge({status,onClick,disabled}){const c=STATUS_CONFIG[status];return<button onClick={disabled?undefined:onClick} style={{background:c.bg,border:`1.5px solid ${c.border}`,color:c.text,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,cursor:disabled?"default":"pointer",fontFamily:"inherit",opacity:disabled?.7:1}}>{c.label}</button>;}
 function Input({value,onChange,placeholder,style,type="text"}){return<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 14px",fontSize:14,fontFamily:"inherit",width:"100%",outline:"none",...style}} onFocus={e=>e.target.style.borderColor="#D4A843"} onBlur={e=>e.target.style.borderColor="#364258"}/>;}
@@ -442,6 +458,7 @@ export default function HouseJobsApp(){
   const[houseIssues,setHouseIssues]=useState([]);
   const[archives,setArchives]=useState({});
   const[completionDraft,setCompletionDraft]=useState(null);
+  const[completionError,setCompletionError]=useState("");
   const[proofNote,setProofNote]=useState("");
   const[supplyStatus,setSupplyStatus]=useState("ok");
   const[supplyNote,setSupplyNote]=useState("");
@@ -612,18 +629,27 @@ export default function HouseJobsApp(){
 
   function openCompletion(type,week,id,index,name){
     setCompletionDraft({type,week,id,index,name});
-    setProofNote("");setSupplyStatus("ok");setSupplyNote("");
+    setProofNote("");setSupplyStatus("ok");setSupplyNote("");setCompletionError("");
   }
   async function submitCompletion(){
     if(!completionDraft||completionBusy)return;
-    setCompletionBusy(true);
+    setCompletionBusy(true);setCompletionError("");
     try{
-      const proof={note:proofNote.trim(),supplyStatus,supplyNote:supplyNote.trim(),submittedBy:myName||"Unknown",submittedUid:authUser?.uid||"local",submittedAt:new Date().toISOString()};
+      const writeUser=fbConnected?await fbWriteUser():null;
+      const proof={note:proofNote.trim(),supplyStatus,supplyNote:supplyNote.trim(),submittedBy:myName||"Unknown",submittedUid:writeUser?.uid||"local",submittedAt:new Date().toISOString()};
       const{type,week,id,index}=completionDraft;
       const submitOnline=async(path,changes)=>{
+        const current=await fbGet(path);
+        if(!current)throw new Error("This job is no longer available. Refresh the app.");
+        if(current.status!=="pending"&&current.status!=="claimed")throw new Error(`This job is already ${current.status}. Refresh the app.`);
         const update={};Object.entries(changes).forEach(([key,value])=>{update[path+"/"+key]=value;});
         if(supplyStatus!=="ok")update["houseOps/supplies/"+keyOf(type+"|"+week+"|"+id+"|"+proof.submittedAt)]={item:supplyNote.trim()||"Supplies needed",location:completionDraft.name,severity:supplyStatus==="out"?"out":"low",status:"open",reporterUid:proof.submittedUid,reporterName:proof.submittedBy,createdAt:proof.submittedAt};
-        await fbUpdate("",update);
+        try{await fbUpdate("",update);}catch(error){
+          const denied=String(error?.code||error?.message||"").toLowerCase().includes("permission");
+          if(!denied||!auth?.currentUser)throw error;
+          await auth.currentUser.getIdToken(true);
+          await fbUpdate("",update);
+        }
       };
       if(type==="weekly"){
         const u=JSON.parse(JSON.stringify(assignments));
@@ -636,7 +662,7 @@ export default function HouseJobsApp(){
         if(u[week]?.projects?.[index]){u[week].projects[index]={...u[week].projects[index],status:"done",completedBy:u[week].projects[index].claimedBy||myName,proof};if(fbConnected)await submitOnline(`weeklyProjects/${sanitizeKey(week)}/projects/${index}`,{status:"done",completedBy:u[week].projects[index].completedBy,proof});else await saveProjA(u);setWeeklyProjects(u);}
       }
       setCompletionDraft(null);
-    }catch(e){console.error("Completion submission failed:",e);alert("Could not submit this job. Check your connection and try again.");}finally{setCompletionBusy(false);}
+    }catch(e){console.error("Completion submission failed:",e);setCompletionError(completionErrorText(e));}finally{setCompletionBusy(false);}
   }
   async function reviewItem(item,approved){
     if(item.type==="weekly"){
@@ -1885,6 +1911,7 @@ body{background:#10131c}
             {!myName&&<div style={{background:"#F59E0B12",border:"1px solid #F59E0B40",borderRadius:8,padding:9,fontSize:11,color:"#F59E0B",marginBottom:10}}>Choose your name in the Me tab so the submission records who completed it.</div>}
             <textarea value={proofNote} onChange={e=>setProofNote(e.target.value)} placeholder="Completion note (optional)" rows={3} style={{width:"100%",resize:"vertical",background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:9}}/>
             <div style={{background:"#161C29",borderRadius:9,padding:10,marginBottom:12}}><label style={{fontSize:11,color:"#94A3B8",display:"block",marginBottom:6}}>Supplies for this job</label><select value={supplyStatus} onChange={e=>setSupplyStatus(e.target.value)} style={{width:"100%",background:"#1C2332",border:"1px solid #364258",color:"#E2E8F0",borderRadius:7,padding:"9px",fontFamily:"inherit",marginBottom:supplyStatus==="ok"?0:8}}><option value="ok">All stocked</option><option value="low">Running low</option><option value="out">Out of supplies</option></select>{supplyStatus!=="ok"&&<Input value={supplyNote} onChange={setSupplyNote} placeholder="What needs restocking?"/>}</div>
+            {completionError&&<div role="alert" style={{background:"#7F1D1D35",border:"1px solid #EF444466",color:"#FECACA",borderRadius:8,padding:"10px 12px",fontSize:12,lineHeight:1.45,marginBottom:12}}>{completionError}</div>}
             <button onClick={submitCompletion} disabled={completionBusy} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#10131C",borderRadius:10,padding:"13px",fontSize:14,fontWeight:800,cursor:"pointer"}}>{completionBusy?"Submitting…":"Mark done and send to manager"}</button>
           </div>
         </div>}
