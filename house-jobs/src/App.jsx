@@ -330,7 +330,10 @@ function generateWeekLabels(startValue,endValue,excludedText=""){
 }
 // Local fallback used when Firebase is unavailable.
 async function localStoreGet(key){try{const value=localStorage.getItem(key);return value===null?null:{value};}catch{return null;}}
-async function localStoreSet(key,value){try{localStorage.setItem(key,value);}catch{}}
+async function localStoreSet(key,value){
+  try{localStorage.setItem(key,value);}
+  catch(error){throw new Error(`This device could not save ${key}. ${error?.message||"Storage is unavailable."}`);}
+}
 
 // Firebase key sanitization
 function sanitizeKey(k){return k.replace(/[.#$/\[\]]/g,"_");}
@@ -352,9 +355,18 @@ async function initFirebase(){
     firebaseReady=true;return true;
   }catch(e){console.error("Firebase initialization failed:",e);return false;}
 }
-async function fbSet(p,d){if(!firebaseReady)return;const{ref,set}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return set(p?ref(db,p):ref(db),d);}
-async function fbUpdate(p,d){if(!firebaseReady)return;const{ref,update}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return update(p?ref(db,p):ref(db),d);}
-async function fbTransaction(p,updater){if(!firebaseReady)return null;const{ref,runTransaction}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return runTransaction(p?ref(db,p):ref(db),updater);}
+async function firebaseWriteWithAuthRetry(operation){
+  try{return await operation();}
+  catch(error){
+    const denied=String(error?.code||error?.message||"").toLowerCase().includes("permission");
+    if(!denied||!auth?.currentUser)throw error;
+    await auth.currentUser.getIdToken(true);
+    return operation();
+  }
+}
+async function fbSet(p,d){if(!firebaseReady)return;const{ref,set}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return firebaseWriteWithAuthRetry(()=>set(p?ref(db,p):ref(db),d));}
+async function fbUpdate(p,d){if(!firebaseReady)return;const{ref,update}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return firebaseWriteWithAuthRetry(()=>update(p?ref(db,p):ref(db),d));}
+async function fbTransaction(p,updater){if(!firebaseReady)return null;const{ref,runTransaction}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return firebaseWriteWithAuthRetry(()=>runTransaction(p?ref(db,p):ref(db),updater));}
 async function fbGet(p){if(!firebaseReady)return null;const{ref,get}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");const s=await get(p?ref(db,p):ref(db));return s.exists()?s.val():null;}
 async function fbOnValue(p,cb,onError){if(!firebaseReady)return()=>{};const{ref,onValue}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");return onValue(p?ref(db,p):ref(db),s=>{cb(s.exists()?s.val():null);},onError);}
 const OPS_API={get:fbGet,set:fbSet,update:fbUpdate,transaction:fbTransaction,subscribe:fbOnValue};
@@ -428,6 +440,7 @@ export default function HouseJobsApp(){
   const[view,setView]=useState("me");
   const[reviewFilter,setReviewFilter]=useState("all");
   const[briefNotice,setBriefNotice]=useState("");
+  const[persistenceNotice,setPersistenceNotice]=useState(null);
   const[completionBusy,setCompletionBusy]=useState(false);
   const[semesterName,setSemesterName]=useState("Fall 2026");
   const[brothers,setBrothers]=useState(DEFAULT_BROTHERS);
@@ -513,6 +526,8 @@ export default function HouseJobsApp(){
   const skipSync=useRef(false);
   const skipSunSync=useRef(false);
   const skipProjSync=useRef(false);
+  const weeksRef=useRef(DEFAULT_WEEKS);
+  useEffect(()=>{weeksRef.current=weeks;},[weeks]);
 
   // Auto-detect current week based on today's date
   function detectCurrentWeek(weeksList){
@@ -545,6 +560,7 @@ export default function HouseJobsApp(){
         fbGet("houseSettings"),fbGet("houseIssues"),fbGet("archives")
       ]);
       const w=cfg?.weeks||DEFAULT_WEEKS;
+      weeksRef.current=w;
       if(cfg){setBrothers(cfg.brothers||DEFAULT_BROTHERS);setJobs(cfg.jobs||DEFAULT_JOBS);setWeeks(w);setSemesterName(cfg.semesterName||"Fall 2026");}
       if(asg)setAssignments(desanitizeObjKeys(asg,w));else{const a=generateAssignments(cfg?.brothers||DEFAULT_BROTHERS,cfg?.jobs||DEFAULT_JOBS,w);setAssignments(a);await fbSet("assignments",sanitizeObjKeys(a));}
       if(sunCfg){setEvenPins(sunCfg.evenPins||DEFAULT_EVEN_PINS);setOddPins(sunCfg.oddPins||DEFAULT_ODD_PINS);setSundayJobs(sunCfg.sundayJobs||DEFAULT_SUNDAY_JOBS);}
@@ -555,13 +571,13 @@ export default function HouseJobsApp(){
       if(settings)setHouseSettings({...DEFAULT_HOUSE_SETTINGS,...settings});
       if(issues)setHouseIssues(Array.isArray(issues)?issues:Object.values(issues));
       if(archiveData)setArchives(archiveData);
-      fbOnValue("assignments",d=>{if(skipSync.current){skipSync.current=false;return;}if(d)setAssignments(desanitizeObjKeys(d,w));});
-      fbOnValue("config",d=>{if(d){setBrothers(d.brothers||DEFAULT_BROTHERS);setJobs(d.jobs||DEFAULT_JOBS);setWeeks(d.weeks||DEFAULT_WEEKS);setSemesterName(d.semesterName||"Fall 2026");}});
-      fbOnValue("sundayAssignments",d=>{if(skipSunSync.current){skipSunSync.current=false;return;}if(d)setSundayAssignments(desanitizeObjKeys(d,w));});
+      fbOnValue("assignments",d=>{if(skipSync.current){skipSync.current=false;return;}setAssignments(d?desanitizeObjKeys(d,weeksRef.current):{});});
+      fbOnValue("config",d=>{if(d){const nextWeeks=d.weeks||DEFAULT_WEEKS;weeksRef.current=nextWeeks;setBrothers(d.brothers||DEFAULT_BROTHERS);setJobs(d.jobs||DEFAULT_JOBS);setWeeks(nextWeeks);setSemesterName(d.semesterName||"Fall 2026");}});
+      fbOnValue("sundayAssignments",d=>{if(skipSunSync.current){skipSunSync.current=false;return;}setSundayAssignments(d?desanitizeObjKeys(d,weeksRef.current):{});});
       fbOnValue("sundayConfig",d=>{if(d){setEvenPins(d.evenPins||DEFAULT_EVEN_PINS);setOddPins(d.oddPins||DEFAULT_ODD_PINS);setSundayJobs(d.sundayJobs||DEFAULT_SUNDAY_JOBS);}});
-      fbOnValue("weeklyProjects",d=>{if(skipProjSync.current){skipProjSync.current=false;return;}if(d)setWeeklyProjects(desanitizeObjKeys(d,w));});
+      fbOnValue("weeklyProjects",d=>{if(skipProjSync.current){skipProjSync.current=false;return;}setWeeklyProjects(d?desanitizeObjKeys(d,weeksRef.current):{});});
       fbOnValue("projectsConfig",d=>{if(d)setProjects(d);});
-      fbOnValue("announcements",d=>{if(d)setAnnouncements(Array.isArray(d)?d:[]);});
+      fbOnValue("announcements",d=>setAnnouncements(Array.isArray(d)?d:[]));
       fbOnValue("houseSettings",d=>{if(d)setHouseSettings({...DEFAULT_HOUSE_SETTINGS,...d});});
       fbOnValue("houseIssues",d=>setHouseIssues(d?(Array.isArray(d)?d:Object.values(d)):[]));
       fbOnValue("archives",d=>setArchives(d||{}));
@@ -572,11 +588,14 @@ export default function HouseJobsApp(){
         const cfg=await localStoreGet("housejobs:config"),asg=await localStoreGet("housejobs:assignments");
         if(cfg?.value){const p=JSON.parse(cfg.value);setBrothers(p.brothers||DEFAULT_BROTHERS);setJobs(p.jobs||DEFAULT_JOBS);setWeeks(p.weeks||DEFAULT_WEEKS);setSemesterName(p.semesterName||"Fall 2026");}
         if(asg?.value)setAssignments(JSON.parse(asg.value));else setAssignments(generateAssignments(DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_WEEKS));
-        const sunAsg=await localStoreGet("housejobs:sundayAssignments");
+        const sunCfg=await localStoreGet("housejobs:sundayConfig"),sunAsg=await localStoreGet("housejobs:sundayAssignments");
+        if(sunCfg?.value){const p=JSON.parse(sunCfg.value);setEvenPins(p.evenPins||DEFAULT_EVEN_PINS);setOddPins(p.oddPins||DEFAULT_ODD_PINS);setSundayJobs(p.sundayJobs||DEFAULT_SUNDAY_JOBS);}
         if(sunAsg?.value)setSundayAssignments(JSON.parse(sunAsg.value));else setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS));
-        const wp=await localStoreGet("housejobs:weeklyProjects");
+        const projCfg=await localStoreGet("housejobs:projectsConfig"),wp=await localStoreGet("housejobs:weeklyProjects");
+        if(projCfg?.value)setProjects(JSON.parse(projCfg.value));
         if(wp?.value)setWeeklyProjects(JSON.parse(wp.value));else setWeeklyProjects(generateWeeklyProjects(DEFAULT_PROJECTS,DEFAULT_WEEKS));
-        const settings=await localStoreGet("housejobs:houseSettings"),issues=await localStoreGet("housejobs:houseIssues"),archiveData=await localStoreGet("housejobs:archives");
+        const ann=await localStoreGet("housejobs:announcements"),settings=await localStoreGet("housejobs:houseSettings"),issues=await localStoreGet("housejobs:houseIssues"),archiveData=await localStoreGet("housejobs:archives");
+        if(ann?.value)setAnnouncements(JSON.parse(ann.value));
         if(settings?.value)setHouseSettings({...DEFAULT_HOUSE_SETTINGS,...JSON.parse(settings.value)});
         if(issues?.value)setHouseIssues(JSON.parse(issues.value));
         if(archiveData?.value)setArchives(JSON.parse(archiveData.value));
@@ -587,32 +606,122 @@ export default function HouseJobsApp(){
   })();},[]);
 
   // ─── SAVE ───
-  const saveA=useCallback(async a=>{try{if(fbConnected){skipSync.current=true;await fbSet("assignments",sanitizeObjKeys(a));}else{await localStoreSet("housejobs:assignments",JSON.stringify(a));}}catch(e){console.error("saveA error:",e);}},[fbConnected]);
-  const saveCfg=useCallback(async(b,j,w,sn)=>{try{
+  const persist=useCallback(async(label,operation)=>{
+    setPersistenceNotice({type:"saving",message:`Saving ${label}…`});
+    try{
+      await operation();
+      setPersistenceNotice({type:"saved",message:`${label} saved.`});
+      return true;
+    }catch(error){
+      console.error(`${label} save failed:`,error);
+      setPersistenceNotice({type:"error",message:`${label} was not saved. ${error?.message||"Refresh and try again."}`});
+      return false;
+    }
+  },[]);
+  const saveA=useCallback((a,{preserveProgress=true}={})=>persist("Weekly schedule",async()=>{
+    if(fbConnected){
+      const proposed=sanitizeObjKeys(a);
+      const result=await fbTransaction("assignments",current=>{
+        if(!preserveProgress)return proposed;
+        const next=JSON.parse(JSON.stringify(proposed));
+        for(const [week,rows] of Object.entries(current||{}))for(const [id,job] of Object.entries(rows||{})){
+          if(job?.status&&job.status!=="pending"){
+            next[week]??={};next[week][id]=job;
+          }
+        }
+        return next;
+      });
+      if(!result?.committed)throw new Error("Firebase did not commit the update.");
+      setAssignments(desanitizeObjKeys(result.snapshot.val()||{},weeksRef.current));
+    }else await localStoreSet("housejobs:assignments",JSON.stringify(a));
+  }),[fbConnected,persist]);
+  const saveCfg=useCallback((b,j,w,sn)=>persist("Weekly setup",async()=>{
     const cleanJobs=j.map(job=>({...job,rotating:!!job.rotating,floorRotate:!!job.floorRotate}));
-    if(fbConnected)await fbSet("config",{brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn});else await localStoreSet("housejobs:config",JSON.stringify({brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn}));}catch(e){console.error("saveCfg error:",e);}},[fbConnected]);
-  const saveSunA=useCallback(async a=>{try{
-    const reconcile=current=>{const proposed=sanitizeObjKeys(a);for(const [week,record] of Object.entries(current||{})){if(proposed[week])for(const field of ["attendance","makeupVersion","manualMakeups","makeupSources","autoMakeupAssignments"])if(record[field]!==undefined)proposed[week][field]=record[field];}return reconcileMakeups(proposed,weeks,sundayJobs);};
-    if(fbConnected){await fbGet("sundayAssignments");await fbTransaction("sundayAssignments",reconcile);}
-    else{const clean=reconcile(sanitizeObjKeys(sundayAssignments));const local=Object.fromEntries(Object.entries(clean).map(([key,value])=>[weeks.find(w=>sanitizeKey(w)===key)||key,value]));setSundayAssignments(local);await localStoreSet("housejobs:sundayAssignments",JSON.stringify(local));}
-  }catch(e){console.error("saveSunA error:",e);alert("Sunday schedule was not saved. Refresh before trying again.");}},[fbConnected,weeks,sundayJobs,sundayAssignments]);
-  const saveSunCfg=useCallback(async(ep,op,sj)=>{try{if(fbConnected)await fbSet("sundayConfig",{evenPins:ep,oddPins:op,sundayJobs:sj});else await localStoreSet("housejobs:sundayConfig",JSON.stringify({evenPins:ep,oddPins:op,sundayJobs:sj}));}catch(e){console.error("saveSunCfg error:",e);}},[fbConnected]);
-  const saveProjA=useCallback(async a=>{try{if(fbConnected){skipProjSync.current=true;await fbSet("weeklyProjects",sanitizeObjKeys(a));}else await localStoreSet("housejobs:weeklyProjects",JSON.stringify(a));}catch(e){console.error("saveProjA error:",e);}},[fbConnected]);
-  const saveProjCfg=useCallback(async p=>{try{if(fbConnected)await fbSet("projectsConfig",p);}catch(e){console.error("saveProjCfg error:",e);}},[fbConnected]);
-  const saveAnnouncements=useCallback(async a=>{try{if(fbConnected)await fbSet("announcements",a);else await localStoreSet("housejobs:announcements",JSON.stringify(a));}catch(e){console.error("saveAnn error:",e);}},[fbConnected]);
+    if(fbConnected)await fbSet("config",{brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn});else await localStoreSet("housejobs:config",JSON.stringify({brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn}));}),[fbConnected,persist]);
+  const saveSunA=useCallback((a,{preserveProgress=true}={})=>persist("Sunday schedule",async()=>{
+    const reconcile=current=>{const proposed=sanitizeObjKeys(a);for(const [week,record] of Object.entries(current||{})){if(proposed[week]){for(const field of ["attendance","makeups","makeupVersion","manualMakeups","makeupSources","autoMakeupAssignments"])if(record[field]!==undefined)proposed[week][field]=record[field];if(preserveProgress){proposed[week].jobs??={};for(const [id,job] of Object.entries(record.jobs||{}))if(job?.status&&job.status!=="pending")proposed[week].jobs[id]=job;}}}return reconcileMakeups(proposed,weeks,sundayJobs);};
+    if(fbConnected){await fbWriteUser();const result=await fbTransaction("sundayAssignments",reconcile);if(!result?.committed)throw new Error("Firebase did not commit the update.");}
+    else{const clean=reconcile(sanitizeObjKeys(a));const local=Object.fromEntries(Object.entries(clean).map(([key,value])=>[weeks.find(w=>sanitizeKey(w)===key)||key,value]));setSundayAssignments(local);await localStoreSet("housejobs:sundayAssignments",JSON.stringify(local));}
+  }),[fbConnected,weeks,sundayJobs,persist]);
+  const saveSunWeek=useCallback((week,nextWeek,{removed=[]}={})=>persist("Sunday schedule",async()=>{
+    if(!nextWeek)throw new Error("That Sunday no longer exists.");
+    if(fbConnected){
+      await fbWriteUser();
+      const result=await fbTransaction(`sundayAssignments/${sanitizeKey(week)}`,current=>{
+        const next=JSON.parse(JSON.stringify(nextWeek));next.jobs??={};
+        for(const field of ["attendance","makeups","makeupVersion","manualMakeups","makeupSources","autoMakeupAssignments"])if(current?.[field]!==undefined)next[field]=current[field];
+        for(const [id,job] of Object.entries(current?.jobs||{})){
+          if(removed.includes(id))continue;
+          const protectedJob=job?.status&&job.status!=="pending";
+          const generatedMakeup=id.startsWith("makeup_");
+          if(protectedJob)next.jobs[id]=job;
+          else if(!next.jobs[id]&&generatedMakeup)next.jobs[id]=job;
+        }
+        if(current?.tempJobs){
+          const ids=new Set((next.tempJobs||[]).map(x=>x.id));
+          next.tempJobs=[...(next.tempJobs||[]),...current.tempJobs.filter(x=>!removed.includes(x.id)&&!ids.has(x.id)&&next.jobs[x.id])];
+        }
+        for(const added of Object.values(current?.autoMakeupAssignments||{})){
+          if(next.jobs[added.jobId]&&!next.jobs[added.jobId].assigned?.includes(added.name))next.jobs[added.jobId].assigned=[...(next.jobs[added.jobId].assigned||[]),added.name];
+        }
+        return next;
+      });
+      if(!result?.committed||!result.snapshot?.exists())throw new Error("Firebase did not commit the update.");
+      const saved=result.snapshot.val();
+      setSundayAssignments(prev=>({...prev,[week]:saved}));
+    }else{
+      const updated={...sundayAssignments,[week]:nextWeek};
+      setSundayAssignments(updated);await localStoreSet("housejobs:sundayAssignments",JSON.stringify(updated));
+    }
+  }),[fbConnected,persist,sundayAssignments]);
+  const saveSunCfg=useCallback((ep,op,sj)=>persist("Sunday setup",async()=>{if(fbConnected)await fbSet("sundayConfig",{evenPins:ep,oddPins:op,sundayJobs:sj});else await localStoreSet("housejobs:sundayConfig",JSON.stringify({evenPins:ep,oddPins:op,sundayJobs:sj}));}),[fbConnected,persist]);
+  const saveProjA=useCallback((a,{preserveProgress=true}={})=>persist("Projects",async()=>{
+    if(fbConnected){
+      const proposed=sanitizeObjKeys(a);
+      const result=await fbTransaction("weeklyProjects",current=>{
+        if(!preserveProgress)return proposed;
+        const next=JSON.parse(JSON.stringify(proposed));
+        for(const [week,record] of Object.entries(current||{})){
+          if(!next[week])continue;
+          const currentById=new Map((record.projects||[]).map(p=>[p.id,p]));
+          next[week].projects=(next[week].projects||[]).map(p=>{const existing=currentById.get(p.id);return existing&&existing.status!=="available"?existing:p;});
+          for(const existing of currentById.values())if(existing.status!=="available"&&!next[week].projects.some(p=>p.id===existing.id))next[week].projects.push(existing);
+        }
+        return next;
+      });
+      if(!result?.committed)throw new Error("Firebase did not commit the update.");
+      setWeeklyProjects(desanitizeObjKeys(result.snapshot.val()||{},weeksRef.current));
+    }else await localStoreSet("housejobs:weeklyProjects",JSON.stringify(a));
+  }),[fbConnected,persist]);
+  const saveProjCfg=useCallback(p=>persist("Project setup",async()=>{if(fbConnected)await fbSet("projectsConfig",p);else await localStoreSet("housejobs:projectsConfig",JSON.stringify(p));}),[fbConnected,persist]);
+  const saveAnnouncements=useCallback(a=>persist("Announcements",async()=>{if(fbConnected)await fbSet("announcements",a);else await localStoreSet("housejobs:announcements",JSON.stringify(a));}),[fbConnected,persist]);
+  useEffect(()=>{
+    if(persistenceNotice?.type!=="saved")return;
+    const timer=setTimeout(()=>setPersistenceNotice(null),2400);
+    return()=>clearTimeout(timer);
+  },[persistenceNotice]);
+  const weeklySetupSignature=JSON.stringify({brothers,jobs,weeks,semesterName});
+  useEffect(()=>{
+    if(loading||!adminUnlocked)return;
+    const timer=setTimeout(()=>{saveCfg(brothers,jobs,weeks,semesterName);},650);
+    return()=>clearTimeout(timer);
+  },[loading,adminUnlocked,weeklySetupSignature,saveCfg]);
   const saveAssignmentStatus=useCallback(async(week,jobId,status)=>{
-    if(fbConnected){try{await fbSet(`assignments/${sanitizeKey(week)}/${sanitizeKey(jobId)}/status`,status);}catch(e){console.error("save assignment status error:",e);}}
-  },[fbConnected]);
+    if(fbConnected)return persist("Weekly job status",()=>fbSet(`assignments/${sanitizeKey(week)}/${sanitizeKey(jobId)}/status`,status));
+    return false;
+  },[fbConnected,persist]);
   const saveSundayStatus=useCallback(async(week,jobId,status)=>{
-    if(fbConnected){try{await fbSet(`sundayAssignments/${sanitizeKey(week)}/jobs/${sanitizeKey(jobId)}/status`,status);}catch(e){console.error("save Sunday status error:",e);}}
-  },[fbConnected]);
+    if(fbConnected)return persist("Sunday job status",()=>fbSet(`sundayAssignments/${sanitizeKey(week)}/jobs/${sanitizeKey(jobId)}/status`,status));
+    return false;
+  },[fbConnected,persist]);
   const saveProjectItem=useCallback(async(week,projIdx,project)=>{
-    if(fbConnected){try{await fbSet(`weeklyProjects/${sanitizeKey(week)}/projects/${projIdx}`,project);}catch(e){console.error("save project error:",e);}}
-  },[fbConnected]);
+    if(fbConnected)return persist("Project",()=>fbSet(`weeklyProjects/${sanitizeKey(week)}/projects/${projIdx}`,project));
+    return false;
+  },[fbConnected,persist]);
   const saveHouseSettings=useCallback(async next=>{
     setHouseSettings(next);
-    if(fbConnected)await fbSet("houseSettings",next);else await localStoreSet("housejobs:houseSettings",JSON.stringify(next));
-  },[fbConnected]);
+    return persist("House settings",async()=>{if(fbConnected)await fbSet("houseSettings",next);else await localStoreSet("housejobs:houseSettings",JSON.stringify(next));});
+  },[fbConnected,persist]);
   const saveIssue=useCallback(async issue=>{
     if(fbConnected)await fbSet(`houseIssues/${issue.id}`,issue);
     else{
@@ -623,10 +732,10 @@ export default function HouseJobsApp(){
     setHouseIssues(prev=>[issue,...prev.filter(x=>String(x.id)!==String(issue.id))]);
   },[fbConnected]);
   const removeIssue=useCallback(async id=>{
-    setHouseIssues(prev=>prev.filter(x=>String(x.id)!==String(id)));
-    if(fbConnected)await fbSet(`houseIssues/${id}`,null);
-    else await localStoreSet("housejobs:houseIssues",JSON.stringify(houseIssues.filter(x=>String(x.id)!==String(id))));
-  },[fbConnected,houseIssues]);
+    const next=houseIssues.filter(x=>String(x.id)!==String(id));
+    const saved=await persist("Issue",async()=>{if(fbConnected)await fbSet(`houseIssues/${id}`,null);else await localStoreSet("housejobs:houseIssues",JSON.stringify(next));});
+    if(saved)setHouseIssues(next);
+  },[fbConnected,houseIssues,persist]);
 
   function openCompletion(type,week,id,index,name){
     setCompletionDraft({type,week,id,index,name});
@@ -682,11 +791,12 @@ export default function HouseJobsApp(){
   }
   async function archiveSemester(){
     setArchiveBusy(true);
-    const id=String(Date.now());
-    const snapshot={id,name:semesterName,archivedAt:new Date().toISOString(),config:{brothers,jobs,weeks,semesterName},sundayConfig:{evenPins,oddPins,sundayJobs},houseSettings,assignments,sundayAssignments,weeklyProjects,houseIssues};
-    if(fbConnected)await fbSet(`archives/${id}`,snapshot);
-    else{const next={...archives,[id]:snapshot};setArchives(next);await localStoreSet("housejobs:archives",JSON.stringify(next));}
-    setArchives(prev=>({...prev,[id]:snapshot}));setArchiveBusy(false);
+    try{
+      const id=String(Date.now());
+      const snapshot={id,name:semesterName,archivedAt:new Date().toISOString(),config:{brothers,jobs,weeks,semesterName},sundayConfig:{evenPins,oddPins,sundayJobs},projectsConfig:projects,houseSettings,announcements,assignments,sundayAssignments,weeklyProjects,houseIssues,houseOps:ops.data};
+      const saved=await persist("Semester archive",async()=>{if(fbConnected)await fbSet(`archives/${id}`,snapshot);else await localStoreSet("housejobs:archives",JSON.stringify({...archives,[id]:snapshot}));});
+      if(saved)setArchives(prev=>({...prev,[id]:snapshot}));
+    }finally{setArchiveBusy(false);}
   }
   function downloadArchive(archive){
     const blob=new Blob([JSON.stringify(archive,null,2)],{type:"application/json"});
@@ -699,9 +809,9 @@ export default function HouseJobsApp(){
       await saveIssue(issue);setIssueForm({category:"Maintenance",priority:"medium",location:"",description:""});
     }catch(e){console.error("Issue submission failed:",e);alert("Could not submit this report. Check your connection and try again.");}
   }
-  function updateIssue(id,changes){
+  async function updateIssue(id,changes){
     const issue=houseIssues.find(x=>String(x.id)===String(id));if(!issue)return;
-    saveIssue({...issue,...changes,updatedAt:new Date().toISOString()});
+    await persist("Issue",()=>saveIssue({...issue,...changes,updatedAt:new Date().toISOString()}));
   }
 
   function addAnnouncement(text){
@@ -881,9 +991,9 @@ export default function HouseJobsApp(){
       const history=getKitchenHistory(sundayAssignments,weeks,week,pool);
       u[week]=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs,history);
     }
-    setSundayAssignments(u);saveSunA(u);
+    saveSunWeek(week,u[week]);
   }
-  function overrideSundayJob(week,jobId,names){const u=JSON.parse(JSON.stringify(sundayAssignments));if(u[week]?.jobs?.[jobId])u[week].jobs[jobId].assigned=names;setSundayAssignments(u);saveSunA(u);}
+  function overrideSundayJob(week,jobId,names){const u=JSON.parse(JSON.stringify(sundayAssignments));if(u[week]?.jobs?.[jobId]){u[week].jobs[jobId].assigned=names;saveSunWeek(week,u[week]);}}
   function reshuffleSundayWeek(week){
     const u=JSON.parse(JSON.stringify(sundayAssignments));
     if(u[week]){
@@ -891,7 +1001,7 @@ export default function HouseJobsApp(){
       const history=getKitchenHistory(sundayAssignments,weeks,week,pool);
       u[week]=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs,history);
     }
-    setSundayAssignments(u);saveSunA(u);
+    saveSunWeek(week,u[week]);
   }
 
   // Project actions
@@ -949,17 +1059,19 @@ export default function HouseJobsApp(){
       const a=generateAssignments(brothers,jobs,weeks);
       const sa=generateSundayAssignments(evenPins,oddPins,sundayJobs,weeks);
       const wp=generateWeeklyProjects(projects,weeks);
-      setAssignments(a);setSundayAssignments(sa);setWeeklyProjects(wp);
-      await Promise.all([
-        saveA(a),
-        saveSunA(sa),
-        saveProjA(wp),
+      const results=await Promise.all([
+        saveA(a,{preserveProgress:false}),
+        saveSunA(sa,{preserveProgress:false}),
+        saveProjA(wp,{preserveProgress:false}),
         saveCfg(brothers,jobs,weeks,semesterName),
         saveSunCfg(evenPins,oddPins,sundayJobs),
         saveProjCfg(projects),
       ]);
+      if(!results.every(Boolean))throw new Error("At least one part of the new schedule was not saved.");
+      setAssignments(a);setSundayAssignments(sa);setWeeklyProjects(wp);
     }catch(e){
       console.error("Regenerate error:",e);
+      setPersistenceNotice({type:"error",message:e.message||"The schedules were not regenerated."});
     }
     setConfirmRegen(false);setCurrentWeekIdx(0);setView("dashboard");setSaving(false);
   }
@@ -1154,6 +1266,8 @@ body{background:#10131c}
       <nav className="primary-nav" aria-label="Main navigation">
         {HOUSE_TABS.map(tab=><button key={tab.key} aria-current={(view===tab.key||tab.key==="house"&&["dashboard","sunday","roster","leaderboard","requests","supplies","maintenance","emergency"].includes(view)||tab.key==="manager"&&["setup","sunday_setup","project_setup"].includes(view))?"page":undefined} onClick={()=>{setView(tab.key);setSelectedBrother(null);}}><span aria-hidden="true">{tab.icon}</span>{tab.label}{tab.key==="manager"&&adminUnlocked&&verificationQueue.length>0&&<small>{verificationQueue.length}</small>}</button>)}
       </nav>
+
+      {persistenceNotice&&<div role={persistenceNotice.type==="error"?"alert":"status"} style={{margin:"10px 20px 0",padding:"9px 12px",borderRadius:8,fontSize:12,lineHeight:1.4,background:persistenceNotice.type==="error"?"#7F1D1D55":persistenceNotice.type==="saved"?"#163B3155":"#263247",border:`1px solid ${persistenceNotice.type==="error"?"#EF444477":persistenceNotice.type==="saved"?"#34D39966":"#64748B66"}`,color:persistenceNotice.type==="error"?"#FECACA":persistenceNotice.type==="saved"?"#A7F3D0":"#D7DEEA"}}>{persistenceNotice.message}</div>}
 
       <div style={{padding:"16px 20px 100px"}}>
 
@@ -1357,7 +1471,7 @@ body{background:#10131c}
                     });
                     if(minJob&&u[wk].jobs[minJob]){
                       u[wk].jobs[minJob].assigned=[...(u[wk].jobs[minJob].assigned||[]),name];
-                      setSundayAssignments(u);saveSunA(u);
+                      saveSunWeek(wk,u[wk]);
                     }
                   }} style={{background:"#D4A84330",border:"none",color:"#D4A843",borderRadius:4,padding:"1px 6px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ Assign</button>
                 </div>)}
@@ -1409,7 +1523,7 @@ body{background:#10131c}
                     // Also add it as a display reference
                     if(!u[currentWeek].tempJobs)u[currentWeek].tempJobs=[];
                     u[currentWeek].tempJobs.push({id:tempId,name:tempJobName.trim(),people:tempJobPeople,desc:tempJobDesc.trim()});
-                    setSundayAssignments(u);saveSunA(u);
+                    saveSunWeek(currentWeek,u[currentWeek]);
                   }
                   setTempJobName("");setTempJobDesc("");setTempJobPeople(2);setShowTempJobForm(false);
                 }} color="#C41E3A">Add</SmallBtn>
@@ -1443,7 +1557,7 @@ body{background:#10131c}
                         if(u[currentWeek]){
                           delete u[currentWeek].jobs[tj.id];
                           u[currentWeek].tempJobs=u[currentWeek].tempJobs.filter(t=>t.id!==tj.id);
-                          setSundayAssignments(u);saveSunA(u);
+                          saveSunWeek(currentWeek,u[currentWeek],{removed:[tj.id]});
                         }
                       }} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:16,padding:"0 4px",lineHeight:1}}>×</button>}
                       <StatusBadge status={data.status} onClick={()=>cycleSundayStatus(currentWeek,tj.id,adminUnlocked)}/>
