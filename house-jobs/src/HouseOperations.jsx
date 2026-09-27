@@ -12,7 +12,16 @@ export function useHouseOperations(api,connected,uid){
     return()=>{active=false;off?.();};
   },[api,connected,uid]);
   async function run(action){if(busy)return false;setError("");if(!connected||!uid){setError("Connect to Firebase before saving. No change was saved.");return false;}setBusy(true);try{await action();return true;}catch(e){setError(e.message||"Could not save. Try again.");return false;}finally{setBusy(false);}}
-  async function transact(path,fn){const existing=await api.get(path);if(!existing)throw Error("This record no longer exists. Refresh and try again.");const result=await api.transaction(path,current=>current?fn(current):current);if(!result?.committed||!result.snapshot?.exists())throw Error("The record changed. Refresh and try again.");return result;}
+  // Errors thrown inside a Firebase transaction updater are not reliably surfaced (a throw during a
+  // server-driven retry can leave the promise hanging), so capture them, abort, and rethrow afterwards.
+  async function transact(path,fn){
+    const existing=await api.get(path);if(!existing)throw Error("This record no longer exists. Refresh and try again.");
+    let failure=null;
+    const result=await api.transaction(path,current=>{failure=null;if(current==null)return current;try{return fn(current);}catch(e){failure=e;return undefined;}});
+    if(failure)throw failure;
+    if(!result?.committed||!result.snapshot?.exists())throw Error("The record changed. Refresh and try again.");
+    return result;
+  }
   return{data,error,busy,run,api,uid,transact};
 }
 function Shell({ops,children}){return <section className="ops"><style>{`
@@ -51,6 +60,22 @@ export function Requests({ops,admin,name,names,weeks,assignments,sundays,jobs,su
   else{const other=targets.find(x=>x.key===target);if(!myJobs.some(([id])=>id===from)||!other)throw Error("Choose both assignments.");Object.assign(request,{week,jobType:type,fromJob:from,toJob:other.id,targetName:other.name});}
   await ops.api.set(`houseOps/requests/${newId()}`,request);setReason("");setFrom("");setTarget("");
  });}
+ // Approval touches only the schedule it changes (never the database root), then marks the request.
+ const approve=r=>ops.run(async()=>{
+  const now=stamp(),waive=!!waivers[r.id];
+  const request=await ops.api.get(`houseOps/requests/${r.id}`);
+  if(!request||request.status!=="pending")throw Error("This request has already been processed.");
+  if(request.kind==="absence")request.waiveMakeup=waive;
+  const base={houseOps:{requests:{[r.id]:request}}};
+  if(request.kind==="absence"){
+   const[config,sundayConfig]=await Promise.all([ops.api.get("config"),ops.api.get("sundayConfig")]);
+   await ops.transact("sundayAssignments",current=>approveRequest({...base,config,sundayConfig,sundayAssignments:current},r.id,ops.uid,now).sundayAssignments);
+  }else if(request.kind==="swap"){
+   const wk=weekKey(request.week),field=request.jobType==="weekly"?"assignments":"sundayAssignments";
+   await ops.transact(`${field}/${wk}`,current=>approveRequest({...base,[field]:{[wk]:current}},r.id,ops.uid,now)[field][wk]);
+  }else throw Error("Unknown request type.");
+  await ops.transact(`houseOps/requests/${r.id}`,current=>{if(current.status!=="pending")throw Error("This request has already been processed.");return{...current,...(current.kind==="absence"?{waiveMakeup:waive}:{}),status:"approved",reviewedBy:ops.uid,reviewedAt:now};});
+ });
  const list=rows(ops.data.requests).filter(r=>admin||r.requesterUid===ops.uid||r.targetName===name).filter(r=>showHistory||r.status==="pending").sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
  return <Shell ops={ops}><h2>Requests</h2><p>Names are self-selected in this app. The manager checks each request before approving it. Request details are readable by signed-in app users.</p><form onSubmit={submit}><h3>New request</h3><p>Submitting as {name||"no name selected"}. Absences require manager approval; makeup is required unless the manager waives it.</p>
  <label>Request type<select value={kind} onChange={e=>setKind(e.target.value)}><option value="absence">Absence</option><option value="swap">Job swap</option></select></label>
@@ -62,7 +87,7 @@ export function Requests({ops,admin,name,names,weeks,assignments,sundays,jobs,su
  {!list.length&&<p>No requests to display.</p>}{list.map(r=><article key={r.id}><h3>{r.kind==="absence"?"Absence":"Job swap"} · {r.requesterName}</h3><span className="pill">{r.status}</span><p>{r.kind==="absence"?`${r.start} through ${r.end} — ${r.reason}`:`${r.week} · ${r.requesterName} ↔ ${r.targetName} · ${r.jobType}`}</p>{r.kind==="swap"&&<p>{(r.jobType==="weekly"?jobs:sundayJobs).find(j=>j.id===r.fromJob)?.name||r.fromJob} ↔ {(r.jobType==="weekly"?jobs:sundayJobs).find(j=>j.id===r.toJob)?.name||r.toJob}<br/>Recipient: {r.response?.decision||"awaiting response"}</p>}
  {r.status==="pending"&&<>
  {r.kind==="swap"&&r.targetName===name&&r.requesterUid!==ops.uid&&!r.response&&<div className="actions">{["accepted","declined"].map(decision=><button disabled={ops.busy} key={decision} onClick={()=>ops.run(()=>ops.api.set(`houseOps/requests/${r.id}/response`,{uid:ops.uid,name,decision}))}>{decision==="accepted"?"Accept exchange":"Decline exchange"}</button>)}</div>}
- {admin&&<>{r.kind==="absence"&&<label><input type="checkbox" checked={!!waivers[r.id]} onChange={e=>setWaivers({...waivers,[r.id]:e.target.checked})}/> Waive makeup for this absence</label>}<div className="actions"><button disabled={ops.busy||r.kind==="swap"&&r.response?.decision!=="accepted"} onClick={()=>ops.run(()=>ops.transact("",current=>{if(!current)return current;const copy=JSON.parse(JSON.stringify(current));if(copy.houseOps?.requests?.[r.id]&&r.kind==="absence")copy.houseOps.requests[r.id].waiveMakeup=!!waivers[r.id];return approveRequest(copy,r.id,ops.uid,stamp());}))}>Approve {r.kind==="swap"?"and exchange jobs":"absence"}</button><button disabled={ops.busy} onClick={()=>ops.run(()=>ops.transact(`houseOps/requests/${r.id}`,current=>{if(!current||current.status!=="pending")throw Error("Request already processed.");return {...current,status:"rejected",reviewedBy:ops.uid,reviewedAt:stamp()};}))}>Reject</button></div></>}
+ {admin&&<>{r.kind==="absence"&&<label><input type="checkbox" checked={!!waivers[r.id]} onChange={e=>setWaivers({...waivers,[r.id]:e.target.checked})}/> Waive makeup for this absence</label>}<div className="actions"><button disabled={ops.busy||r.kind==="swap"&&r.response?.decision!=="accepted"} onClick={()=>approve(r)}>Approve {r.kind==="swap"?"and exchange jobs":"absence"}</button><button disabled={ops.busy} onClick={()=>ops.run(()=>ops.transact(`houseOps/requests/${r.id}`,current=>{if(!current||current.status!=="pending")throw Error("Request already processed.");return {...current,status:"rejected",reviewedBy:ops.uid,reviewedAt:stamp()};}))}>Reject</button></div></>}
  </>}
  </article>)}</Shell>;
 }

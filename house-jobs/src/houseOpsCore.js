@@ -79,7 +79,7 @@ export function setAttendance(input,weeks,jobs,week,names,status,makeupRequired,
   data[wk].attendance??={};
   for(const name of unique(names)){
     if(status==="unmarked")delete data[wk].attendance[keyOf(name)];
-    else data[wk].attendance[keyOf(name)]={name,status,makeupRequired:status!=="present"&&makeupRequired,updatedBy:uid,updatedAt:now};
+    else data[wk].attendance[keyOf(name)]={name,status,makeupRequired:status!=="present"&&makeupRequired!==false,updatedBy:uid,updatedAt:now};
   }
   return reconcileMakeups(data,weeks,jobs);
 }
