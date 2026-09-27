@@ -160,6 +160,7 @@ const STATUS_CONFIG = {
   done:{ bg:"#FDF3D7", border:"#D4A843", text:"#6B5220", label:"Done" },
   missed:{ bg:"#FEE2E2", border:"#EF4444", text:"#991B1B", label:"Missed" },
   verified:{ bg:"#DBEAFE", border:"#3B82F6", text:"#1E40AF", label:"Verified" },
+  excused:{ bg:"#E5E7EB", border:"#9CA3AF", text:"#374151", label:"Excused" },
 };
 const DIFF_COLORS = { easy:{ bg:"#D4A84318", color:"#D4A843", border:"#D4A84340", pts:1 }, medium:{ bg:"#F59E0B18", color:"#F59E0B", border:"#F59E0B40", pts:2 } };
 
@@ -389,7 +390,7 @@ function completionErrorText(error){
   return`Could not submit this job${code?` (${code})`:""}.${detail?` ${detail}`:" Refresh and try again."}`;
 }
 // ─── COMPONENTS ───
-function StatusBadge({status,onClick,disabled}){const c=STATUS_CONFIG[status];return<button onClick={disabled?undefined:onClick} style={{background:c.bg,border:`1.5px solid ${c.border}`,color:c.text,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,cursor:disabled?"default":"pointer",fontFamily:"inherit",opacity:disabled?.7:1}}>{c.label}</button>;}
+function StatusBadge({status,onClick,disabled}){const c=STATUS_CONFIG[status]||STATUS_CONFIG.pending;return<button onClick={disabled?undefined:onClick} style={{background:c.bg,border:`1.5px solid ${c.border}`,color:c.text,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,cursor:disabled?"default":"pointer",fontFamily:"inherit",opacity:disabled?.7:1}}>{c.label}</button>;}
 function Input({value,onChange,placeholder,style,type="text"}){return<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 14px",fontSize:14,fontFamily:"inherit",width:"100%",outline:"none",...style}} onFocus={e=>e.target.style.borderColor="#D4A843"} onBlur={e=>e.target.style.borderColor="#364258"}/>;}
 function SmallBtn({children,onClick,color="#D4A843"}){return<button onClick={onClick} style={{background:`${color}18`,border:`1px solid ${color}50`,color,borderRadius:6,padding:"5px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{children}</button>;}
 function SyncDot({connected}){return<div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:7,height:7,borderRadius:"50%",background:connected?"#D4A843":"#EF4444",boxShadow:connected?"0 0 6px #D4A84380":"0 0 6px #EF444480"}}/><span style={{fontSize:10,color:"#A0AEC3",fontFamily:"'Space Mono',monospace"}}>{connected?"LIVE":"LOCAL"}</span></div>;}
@@ -398,7 +399,7 @@ function DiffBadge({d}){const c=DIFF_COLORS[d]||DIFF_COLORS.easy;return<span sty
 
 
 const HOUSE_TABS=[{key:"me",label:"My jobs",icon:"✓"},{key:"house",label:"House",icon:"⌂"},{key:"woth",label:"WOTH Day",icon:"⌂"},{key:"projects",label:"Projects",icon:"+"},{key:"issues",label:"Report",icon:"!"},{key:"manager",label:"Manager",icon:"⚙"}];
-const TASK_LABELS={pending:"To do",claimed:"In progress",done:"In review",verified:"Verified",missed:"Missed"};
+const TASK_LABELS={pending:"To do",claimed:"In progress",done:"In review",verified:"Verified",missed:"Missed",excused:"Excused"};
 
 function TaskFocus({tasks,name,week,onComplete,onProjects}){
   const [filter,setFilter]=useState("active"),[query,setQuery]=useState("");
@@ -427,7 +428,7 @@ function TaskFocus({tasks,name,week,onComplete,onProjects}){
       const late=actionable&&t.due&&t.due<new Date();
       return <article className="task-card" key={key}><div className="task-top"><span className="eyebrow">{t.type==="sunday"?"SUNDAY CLEANING":t.type==="project"?"HOUSE PROJECT":"WEEKLY JOB"}</span><span className={"task-status "+t.entry.status}>{TASK_LABELS[t.entry.status]||t.entry.status}</span></div><h3>{t.name}</h3><p className={late?"late":"quiet"}>{t.due?(late?"Overdue · ":"Due ")+formatDue(t.due):"No deadline set"}</p>{t.entry.assigned?.length>1&&<p className="quiet">Team: {t.entry.assigned.join(", ")}</p>}{t.entry.rejectionNote&&actionable&&<p className="return-note">Manager note: {t.entry.rejectionNote}</p>}
       {steps.length>0&&<details><summary>Cleaning checklist · {steps.filter((x,i)=>checks[key+":"+i+":"+x]).length}/{steps.length}</summary><p className="quiet">Personal checklist, saved on this device. Submit below when the job is done.</p>{steps.map((step,i)=><label className="check-row" key={i}><input type="checkbox" checked={!!checks[key+":"+i+":"+step]} onChange={()=>toggle(key+":"+i+":"+step)}/><span>{step}</span></label>)}</details>}
-      {actionable?<button className="primary-action" onClick={()=>onComplete(t)}>Submit completed work →</button>:<p className="quiet">{t.entry.status==="done"?"Awaiting manager review.":t.entry.status==="verified"?"Verified by manager.":"Contact your house manager about this assignment."}</p>}
+      {actionable?<button className="primary-action" onClick={()=>onComplete(t)}>Submit completed work →</button>:<p className="quiet">{t.entry.status==="done"?"Awaiting manager review.":t.entry.status==="verified"?"Verified by manager.":t.entry.status==="excused"?"Cleared by manager — nothing to do.":"Contact your house manager about this assignment."}</p>}
       </article>;
     })}
   </section>;
@@ -1079,7 +1080,7 @@ export default function HouseJobsApp(){
   // ─── STATS ───
   const brotherNames=useMemo(()=>getBrotherNames(brothers),[brothers]);
   const operationsNames=[...new Set([...brotherNames,...evenPins,...oddPins])].sort();
-  const stats=useMemo(()=>{const s={};brotherNames.forEach(b=>{s[b]={total:0,done:0,missed:0,verified:0,pending:0};});Object.values(assignments).forEach(wj=>{if(!wj||typeof wj!=="object")return;Object.values(wj).forEach(e=>{if(!e?.assigned)return;e.assigned.forEach(b=>{if(s[b]){s[b].total++;s[b][e.status]++;}});});});return s;},[assignments,brotherNames]);
+  const stats=useMemo(()=>{const s={};brotherNames.forEach(b=>{s[b]={total:0,done:0,missed:0,verified:0,pending:0};});Object.values(assignments).forEach(wj=>{if(!wj||typeof wj!=="object")return;Object.values(wj).forEach(e=>{if(!e?.assigned)return;if(e.status==="excused")return;e.assigned.forEach(b=>{if(s[b]){s[b].total++;s[b][e.status]=(s[b][e.status]||0)+1;}});});});return s;},[assignments,brotherNames]);
 
   const projectStats=useMemo(()=>{
     const s={};
@@ -1095,7 +1096,7 @@ export default function HouseJobsApp(){
     return s;
   },[weeklyProjects]);
 
-  const weekStats=useMemo(()=>{const t=Object.keys(weekData).length;const d=Object.values(weekData).filter(j=>j?.status==="done"||j?.status==="verified").length;const m=Object.values(weekData).filter(j=>j?.status==="missed").length;return{total:t,done:d,missed:m,pending:t-d-m};},[weekData]);
+  const weekStats=useMemo(()=>{const t=Object.values(weekData).filter(j=>j?.status!=="excused").length;const d=Object.values(weekData).filter(j=>j?.status==="done"||j?.status==="verified").length;const m=Object.values(weekData).filter(j=>j?.status==="missed").length;return{total:t,done:d,missed:m,pending:t-d-m};},[weekData]);
   const completionPct=weekStats.total>0?Math.round((weekStats.done/weekStats.total)*100):0;
   const verificationQueue=useMemo(()=>{
     const list=[];
@@ -1111,10 +1112,24 @@ export default function HouseJobsApp(){
   },[houseIssues]);
   const overdueItems=useMemo(()=>{
     const now=Date.now(),list=[];
-    Object.entries(assignments).forEach(([week,data])=>{const due=getDueDate(week,"weekly",houseSettings);if(due&&due.getTime()<now)Object.entries(data||{}).forEach(([id,entry])=>{if(entry?.status==="pending")list.push({type:"weekly",week,id,name:jobs.find(j=>j.id===id)?.name||id,assigned:entry.assigned||[],due});});});
-    Object.entries(sundayAssignments).forEach(([week,data])=>{const due=getDueDate(week,"sunday",houseSettings);if(due&&due.getTime()<now)Object.entries(data?.jobs||{}).forEach(([id,entry])=>{if(entry?.status==="pending")list.push({type:"sunday",week,id,name:sundayJobs.find(j=>j.id===id)?.name||id,assigned:entry.assigned||[],due});});});
+    Object.entries(assignments).forEach(([week,data])=>{const due=getDueDate(week,"weekly",houseSettings);if(due&&due.getTime()<now)Object.entries(data||{}).forEach(([id,entry])=>{if(entry?.status==="pending"&&entry.assigned?.length)list.push({type:"weekly",week,id,name:jobs.find(j=>j.id===id)?.name||id,assigned:entry.assigned||[],due});});});
+    Object.entries(sundayAssignments).forEach(([week,data])=>{const due=getDueDate(week,"sunday",houseSettings);if(due&&due.getTime()<now)Object.entries(data?.jobs||{}).forEach(([id,entry])=>{if(entry?.status==="pending"&&entry.assigned?.length)list.push({type:"sunday",week,id,name:sundayJobs.find(j=>j.id===id)?.name||id,assigned:entry.assigned||[],due});});});
     return list.sort((a,b)=>a.due-b.due);
   },[assignments,sundayAssignments,jobs,sundayJobs,houseSettings]);
+  // Clears the unfinished backlog from weeks before the current one. Uses a neutral "excused" status so it
+  // doesn't count as missed (fines) or toward anyone's totals. The current week is never touched.
+  async function clearOverdueBacklog(){
+    const thisWeek=detectCurrentWeek(weeks),now=Date.now(),changes={};
+    const isPast=week=>{const i=weeks.indexOf(week);return i>=0&&i<thisWeek;};
+    const a=JSON.parse(JSON.stringify(assignments)),sa=JSON.parse(JSON.stringify(sundayAssignments));
+    Object.entries(a).forEach(([week,data])=>{const due=getDueDate(week,"weekly",houseSettings);if(!isPast(week)||!due||due.getTime()>=now)return;Object.entries(data||{}).forEach(([id,e])=>{if(e?.status==="pending"){e.status="excused";changes[`assignments/${sanitizeKey(week)}/${sanitizeKey(id)}/status`]="excused";}});});
+    Object.entries(sa).forEach(([week,data])=>{const due=getDueDate(week,"sunday",houseSettings);if(!isPast(week)||!due||due.getTime()>=now)return;Object.entries(data?.jobs||{}).forEach(([id,e])=>{if(e?.status==="pending"){e.status="excused";changes[`sundayAssignments/${sanitizeKey(week)}/jobs/${sanitizeKey(id)}/status`]="excused";}});});
+    const count=Object.keys(changes).length;
+    if(!count){setPersistenceNotice({type:"saved",message:"No unfinished jobs from earlier weeks."});return;}
+    if(!confirm(`Mark ${count} unfinished jobs from before this week as Excused? They won't count as missed or toward anyone's totals. This week's jobs are left alone.`))return;
+    const ok=await persist("Overdue cleanup",async()=>{if(fbConnected)await fbUpdate("",changes);else{await saveA(a);await saveSunA(sa);}});
+    if(ok){setAssignments(a);setSundayAssignments(sa);}
+  }
   const kitchenStats=useMemo(()=>{
     const all=[...new Set([...evenPins,...oddPins])],counts={};
     all.forEach(n=>{counts[n]=0;});
@@ -1840,7 +1855,7 @@ body{background:#10131c}
 
           <div className="manager-grid">
             <section className="hm-card hm-wide">
-              <h3 style={{fontSize:12,color:"#EF4444",letterSpacing:".08em",marginBottom:9}}>OVERDUE ({overdueItems.length})</h3>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:9}}><h3 style={{fontSize:12,color:"#EF4444",letterSpacing:".08em"}}>OVERDUE ({overdueItems.length})</h3>{overdueItems.length>0&&<SmallBtn onClick={clearOverdueBacklog} color="#9CA3AF">Clear earlier weeks</SmallBtn>}</div>
               {overdueItems.length===0?<p style={{fontSize:12,color:"#A0AEC3"}}>No overdue assignments.</p>:overdueItems.slice(0,12).map(item=><div key={`${item.type}-${item.week}-${item.id}`} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 0",borderBottom:"1px solid #364258"}}><div><div style={{fontSize:12,color:"#E2E8F0"}}>{item.name}</div><div style={{fontSize:10,color:"#A0AEC3"}}>{item.week} • {(item.assigned||[]).join(", ")}</div></div><span style={{fontSize:10,color:"#EF4444",whiteSpace:"nowrap"}}>{formatDue(item.due)}</span></div>)}
             </section>
             <section className="hm-card">
