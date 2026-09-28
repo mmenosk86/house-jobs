@@ -1,5 +1,5 @@
 import {useEffect,useState} from "react";
-import {keyOf,weekKey,unique,expectedNames,setAttendance,approveRequest,completeMaintenance} from "./houseOpsCore.js";
+import {keyOf,weekKey,unique,expectedNames,setAttendance,approveRequest,completeMaintenance,autoAssignEvent} from "./houseOpsCore.js";
 
 const today=()=>new Date().toLocaleDateString("en-CA");
 const stamp=()=>new Date().toISOString();
@@ -120,27 +120,82 @@ function EventJobEditor({ops,eventId,task,names,onClose}){
  async function submit(e){e.preventDefault();if(await ops.run(()=>task?ops.api.update(`houseOps/events/${eventId}/tasks/${task.id}`,{name:title.trim(),desc:desc.trim(),assigned}):ops.api.set(`houseOps/events/${eventId}/tasks/${newId()}`,{name:title.trim(),desc:desc.trim(),assigned,status:"pending"})))onClose();}
  return <form onSubmit={submit}><Field label="Job name" value={title} required maxLength={200} onChange={e=>setTitle(e.target.value)}/><label>Instructions<textarea maxLength={2000} value={desc} onChange={e=>setDesc(e.target.value)}/></label><p>Assigned brothers</p><Names names={names} value={assigned} onChange={setAssigned}/><div className="actions"><button disabled={ops.busy}>Save job</button><button type="button" onClick={onClose}>Cancel</button></div></form>;
 }
+// Basement remodel crews for WOTH Day. Crew size is only a starting point for auto-assign.
+const WOTH_TEMPLATE=[
+ {key:"prep",name:"Move-out & floor prep",size:4,desc:"Clear everything off the basement floors (furniture, rugs, junk)\nPull the old baseboard trim with a pry bar and putty knife, pull the nails\nDo NOT tear up old tile unless the house manager says it was tested\nFill cracks and low spots, then sweep and shop-vac the floor clean"},
+ {key:"paint",name:"Wall patch & paint",size:4,desc:"Spackle holes and dings, sand smooth\nTape edges, lay drop cloths\nCut in and roll walls in Birched White — two coats\nPaint before the floor goes down"},
+ {key:"baseboard",name:"Pre-paint baseboards",size:2,desc:"Set boards on sawhorses away from the floor crew\nPaint all 26 base boards and the corner moulding, both coats\nLet them dry flat — trim crew installs them last"},
+ {key:"floor",name:"Flooring install",size:5,desc:"Starts after prep and paint are done in a room\nRoll out BLOCK-IT underlayment, seams taped\nStart on the longest straight wall with 1/4 in spacers at every wall\nStagger plank seams at least 8 in; tapping block and pull bar, no hammering the edges\nSeam binders at doorways"},
+ {key:"trim",name:"Trim install",size:3,desc:"After the floor is down: nail base to the wall, never into the floating floor\nMiter the corners, install door casings\nFill nail holes, caulk the top edge, touch up paint"},
+ {key:"tools",name:"Tools & supply runner",size:1,desc:"Check what materials arrived against the wishlists\nHand out tools and track who has what\nMake the Menards run for anything missing"},
+ {key:"haul",name:"Haul & cleanup",size:2,desc:"Trash and scrap runs all day, break down boxes\nShop-vac as rooms finish\nMove furniture back and return tools at the end"},
+ {key:"food",name:"Lunch & water",size:1,desc:"Get a headcount, order or pick up lunch\nKeep water and snacks stocked in the basement"},
+];
+function shuffled(list){const a=[...list];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+const sameName=(a,b)=>a.trim().toLowerCase()===b.trim().toLowerCase();
+
+function EventSetup({ops,event,names,projects}){
+ const tasks=rows(event.tasks),open=tasks.filter(t=>t.status==="pending");
+ const choices=[...(event.kind==="woth"?WOTH_TEMPLATE.map(t=>({...t,group:"Remodel crews"})):[]),...(projects||[]).map(p=>({key:"project:"+p.id,name:p.name,desc:"",size:1,group:(p.area||"House")+" projects"}))].filter(c=>!tasks.some(t=>sameName(t.name,c.name)));
+ const groups=unique(choices.map(c=>c.group));
+ const[picked,setPicked]=useState([]),[sizes,setSizes]=useState({}),[attendees,setAttendees]=useState(names),[fresh,setFresh]=useState(false),[plan,setPlan]=useState(null),[notice,setNotice]=useState("");
+ const sizeOf=t=>sizes[t.id]??WOTH_TEMPLATE.find(x=>sameName(x.name,t.name))?.size??1;
+ const toggleAll=(list,on)=>setPicked(on?unique([...picked,...list.map(c=>c.key)]):picked.filter(k=>!list.some(c=>c.key===k)));
+ async function addJobs(){
+  const changes={};choices.filter(c=>picked.includes(c.key)).forEach(c=>{changes[`houseOps/events/${event.id}/tasks/${newId()}`]={name:c.name,desc:c.desc,assigned:[],status:"pending"};});
+  if(await ops.run(()=>ops.api.update("",changes))){setPicked([]);setNotice(`Added ${Object.keys(changes).length} jobs.`);}
+ }
+ function preview(){setPlan(autoAssignEvent(open,attendees,Object.fromEntries(open.map(t=>[t.id,sizeOf(t)])),{fresh,order:shuffled}));}
+ async function savePlan(){
+  const changes={};Object.entries(plan).filter(([id])=>open.some(t=>t.id===id)).forEach(([id,assigned])=>{changes[`houseOps/events/${event.id}/tasks/${id}/assigned`]=assigned;});
+  if(await ops.run(()=>ops.api.update("",changes))){setPlan(null);setNotice("Assignments saved. Brothers will see their job under My jobs.");}
+ }
+ const placed=new Set(tasks.flatMap(t=>t.assigned||[])),idle=attendees.filter(n=>!placed.has(n));
+ async function copyRoster(){
+  const text=[`${event.title} · ${event.date}`,"",...tasks.map(t=>`${t.name}: ${(t.assigned||[]).join(", ")||"(open)"}`),...(idle.length?["",`Not assigned yet: ${idle.join(", ")}`]:[])].join("\n");
+  try{await navigator.clipboard.writeText(text);setNotice("Roster copied. Paste it in the group chat.");}catch{setNotice("Copy is unavailable in this browser.");}
+ }
+ return <div className="panel"><h3>Set up this event</h3>{notice&&<p role="status">{notice}</p>}
+ <details open={!tasks.length||undefined}><summary>1 · Add jobs ({choices.length} available)</summary>
+  {!choices.length&&<p>Every crew and project is already on this event.</p>}
+  {groups.map(g=>{const list=choices.filter(c=>c.group===g),on=list.filter(c=>picked.includes(c.key)).length;return <details key={g} open={g==="Remodel crews"||undefined}><summary>{g} · {on}/{list.length} selected</summary><div className="actions"><button type="button" onClick={()=>toggleAll(list,true)}>Select all</button><button type="button" onClick={()=>toggleAll(list,false)}>Clear</button></div>
+   {list.map(c=><label key={c.key} style={{display:"flex",gap:8,alignItems:"flex-start"}}><input type="checkbox" checked={picked.includes(c.key)} onChange={e=>setPicked(e.target.checked?[...picked,c.key]:picked.filter(k=>k!==c.key))}/><span>{c.name}{c.group==="Remodel crews"&&<small> · crew of {c.size}</small>}</span></label>)}</details>;})}
+  <button disabled={ops.busy||!picked.length} onClick={addJobs}>Add {picked.length} job{picked.length===1?"":"s"}</button>
+ </details>
+ <details><summary>2 · Auto-assign brothers ({attendees.length} attending)</summary>
+  {!open.length?<p>Add jobs first.</p>:<>
+  <p>Who is coming? Uncheck anyone who is out.</p><div className="actions"><button type="button" onClick={()=>setAttendees(names)}>Everyone</button><button type="button" onClick={()=>setAttendees([])}>Nobody</button></div><Names names={names} value={attendees} onChange={setAttendees}/>
+  <p>Crew size per job. Extra people go to the biggest crews.</p>
+  {open.map(t=><div className="roll" key={t.id}><span>{t.name}</span><input type="number" min="1" max="30" aria-label={`Crew size for ${t.name}`} value={sizeOf(t)} onChange={e=>{setSizes({...sizes,[t.id]:e.target.value});setPlan(null);}}/></div>)}
+  <label><input type="checkbox" checked={fresh} onChange={e=>{setFresh(e.target.checked);setPlan(null);}}/> Start over (clear current assignments on open jobs)</label>
+  <div className="actions"><button type="button" disabled={!attendees.length} onClick={preview}>{plan?"Shuffle again":"Preview assignments"}</button>{plan&&<button disabled={ops.busy} onClick={savePlan}>Save assignments</button>}</div>
+  {plan&&<div className="panel">{open.map(t=><p key={t.id}><strong>{t.name}</strong> ({plan[t.id].length}/{sizeOf(t)}): {plan[t.id].join(", ")||"nobody"}</p>)}</div>}</>}
+ </details>
+ <details><summary>3 · Share the roster</summary><p>{tasks.length} jobs · {placed.size} brothers assigned{idle.length?` · ${idle.length} attending but unassigned`:""}</p><button type="button" disabled={!tasks.length} onClick={copyRoster}>Copy roster for the group chat</button></details>
+ </div>;
+}
 function EventTask({ops,event,task,admin,name,names}){
  const[editing,setEditing]=useState(false),[note,setNote]=useState("");
  const submit=()=>ops.run(()=>ops.api.update(`houseOps/events/${event.id}/tasks/${task.id}`,{status:"done",proof:{submittedUid:ops.uid,submittedBy:name,submittedAt:stamp(),note:note.trim()}}));
  const review=status=>ops.run(()=>ops.transact(`houseOps/events/${event.id}/tasks/${task.id}`,current=>{if(!current||current.status!=="done")throw Error("This job is no longer waiting for review.");return{...current,status,reviewedBy:ops.uid,reviewedAt:stamp()};}));
- return <article><h3>{task.name}</h3><span className="pill">{{pending:"Assigned",done:"Awaiting review",verified:"Verified"}[task.status]||task.status}</span><p>{task.assigned?.join(", ")||"Unassigned"}</p><p>{task.desc}</p>{task.proof&&<p>Submitted by {task.proof.submittedBy}: {task.proof.note||"No note"}</p>}
+ return <article><h3>{task.name}</h3><span className="pill">{{pending:"Assigned",done:"Awaiting review",verified:"Verified"}[task.status]||task.status}</span><p>{task.assigned?.join(", ")||"Unassigned"}</p><p style={{whiteSpace:"pre-line"}}>{task.desc}</p>{task.proof&&<p>Submitted by {task.proof.submittedBy}: {task.proof.note||"No note"}</p>}
  {event.status==="scheduled"&&task.status==="pending"&&(task.assigned||[]).includes(name)&&<><label>Completion note<textarea maxLength={2000} value={note} onChange={e=>setNote(e.target.value)}/></label><button disabled={ops.busy} onClick={submit}>Submit event job</button></>}
- {admin&&<div className="actions"><button disabled={ops.busy} onClick={()=>setEditing(!editing)}>Edit assignment</button>{task.status==="done"&&<><button disabled={ops.busy} onClick={()=>review("verified")}>Verify event job</button><button disabled={ops.busy} onClick={()=>review("pending")}>Return for cleaning</button></>}</div>}
+ {admin&&<div className="actions"><button disabled={ops.busy} onClick={()=>setEditing(!editing)}>Edit assignment</button><button disabled={ops.busy} onClick={()=>{if(confirm(`Remove "${task.name}" from this event?`))ops.run(()=>ops.api.set(`houseOps/events/${event.id}/tasks/${task.id}`,null));}}>Remove job</button>{task.status==="done"&&<><button disabled={ops.busy} onClick={()=>review("verified")}>Verify event job</button><button disabled={ops.busy} onClick={()=>review("pending")}>Return for cleaning</button></>}</div>}
  {editing&&<EventJobEditor ops={ops} eventId={event.id} task={task} names={names} onClose={()=>setEditing(false)}/>}</article>;
 }
-function EventCard({ops,event,admin,name,names}){
+function EventCard({ops,event,admin,name,names,projects}){
  const[editing,setEditing]=useState(false),[adding,setAdding]=useState(false);
  const tasks=rows(event.tasks),pending=tasks.filter(t=>t.status!=="verified").length;
  return <div className="panel"><h3>{event.title}</h3><p>{event.date} · {event.allDay?"All day":event.startTime} · {event.status}</p><p>{event.details}</p><p>{tasks.length-pending}/{tasks.length} jobs verified</p>
  {admin&&<div className="actions"><button onClick={()=>setEditing(!editing)}>Edit event</button><button disabled={event.status!=="scheduled"} onClick={()=>setAdding(!adding)}>Add event job</button><button disabled={ops.busy||event.status!=="scheduled"||pending>0} onClick={()=>ops.run(()=>ops.transact(`houseOps/events/${event.id}`,current=>{if(!current||Object.values(current.tasks||{}).some(t=>t.status!=="verified"))throw Error("Verify all jobs before completing the event.");return {...current,status:"completed"};}))}>Complete event</button><button disabled={ops.busy} onClick={()=>{const status=event.status==="scheduled"?"cancelled":"scheduled";if(confirm(`${status==="cancelled"?"Cancel":"Reopen"} this event?`))ops.run(()=>ops.api.update(`houseOps/events/${event.id}`,{status}));}}>{event.status==="scheduled"?"Cancel event":"Reopen event"}</button></div>}
  {editing&&<EventEditor ops={ops} kind={event.kind} event={event} onClose={()=>setEditing(false)}/>}{adding&&<EventJobEditor ops={ops} eventId={event.id} names={names} onClose={()=>setAdding(false)}/>}
+ {admin&&event.status==="scheduled"&&<EventSetup ops={ops} event={event} names={names} projects={projects}/>}
  {tasks.map(t=><EventTask key={t.id} ops={ops} event={event} task={t} admin={admin} name={name} names={names}/>)}{!tasks.length&&<p>No jobs assigned yet.</p>}</div>;
 }
-export function Events({ops,kind,admin,name,names}){
+export function Events({ops,kind,admin,name,names,projects}){
  const[adding,setAdding]=useState(false),[history,setHistory]=useState(false);
  const events=rows(ops.data.events).filter(e=>e.kind===kind&&(history||e.status==="scheduled")).sort((a,b)=>a.date.localeCompare(b.date));
- return <Shell ops={ops}><h2>{kind==="woth"?"WOTH Day":"Emergency cleanings"}</h2>{kind==="woth"&&<p>Work on the house day · semester event</p>}{admin&&<button onClick={()=>setAdding(!adding)}>{kind==="woth"?"Schedule WOTH Day":"Schedule emergency cleaning"}</button>}{adding&&<EventEditor ops={ops} kind={kind} onClose={()=>setAdding(false)}/>}<label><input type="checkbox" checked={history} onChange={e=>setHistory(e.target.checked)}/> Include completed and cancelled events</label>{!events.length&&<p>No scheduled events.{admin&&kind==="woth"?" Schedule WOTH Day to save October 3, 2026, or choose another date.":""}</p>}{events.map(e=><EventCard key={e.id} ops={ops} event={e} admin={admin} name={name} names={names}/>)}</Shell>;
+ return <Shell ops={ops}><h2>{kind==="woth"?"WOTH Day":"Emergency cleanings"}</h2>{kind==="woth"&&<p>Work on the house day · semester event</p>}{admin&&<button onClick={()=>setAdding(!adding)}>{kind==="woth"?"Schedule WOTH Day":"Schedule emergency cleaning"}</button>}{adding&&<EventEditor ops={ops} kind={kind} onClose={()=>setAdding(false)}/>}<label><input type="checkbox" checked={history} onChange={e=>setHistory(e.target.checked)}/> Include completed and cancelled events</label>{!events.length&&<p>No scheduled events.{admin&&kind==="woth"?" Schedule WOTH Day to save October 3, 2026, or choose another date.":""}</p>}{events.map(e=><EventCard key={e.id} ops={ops} event={e} admin={admin} name={name} names={names} projects={projects}/>)}</Shell>;
 }
 export function OpsPersonal({ops,name,onNavigate}){
  const tasks=rows(ops.data.events).filter(e=>e.status==="scheduled").sort((a,b)=>a.date.localeCompare(b.date)).flatMap(e=>rows(e.tasks).filter(t=>t.assigned?.includes(name)&&t.status!=="verified").map(t=>({event:e,task:t})));

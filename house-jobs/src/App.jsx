@@ -1291,7 +1291,7 @@ body{background:#10131c}
         {view==="requests"&&<Requests ops={ops} admin={adminUnlocked} name={myName} names={operationsNames} weeks={weeks} assignments={assignments} sundays={sundayAssignments} jobs={jobs} sundayJobs={sundayJobs}/>}
         {view==="supplies"&&<Supplies ops={ops} admin={adminUnlocked} name={myName} legacy={legacySupplies}/>}
         {view==="maintenance"&&<Maintenance ops={ops} admin={adminUnlocked} names={operationsNames}/>}
-        {(view==="woth"||view==="emergency")&&<Events key={view} ops={ops} kind={view==="woth"?"woth":"emergency"} admin={adminUnlocked} name={myName} names={operationsNames}/>}
+        {(view==="woth"||view==="emergency")&&<Events key={view} ops={ops} kind={view==="woth"?"woth":"emergency"} admin={adminUnlocked} name={myName} names={operationsNames} projects={projects}/>}
         {view==="me"&&<div className="fu">
           {!myName?<div style={{maxWidth:340,margin:"30px auto",textAlign:"center"}}>
             <div style={{fontSize:32,marginBottom:16}}>👋</div>

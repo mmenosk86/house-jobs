@@ -117,6 +117,19 @@ export function approveRequest(input,id,uid,now){
   request.status="approved";request.reviewedBy=uid;request.reviewedAt=now;
   return root;
 }
+// Spreads attendees over event jobs: each open job fills toward its crew size (emptiest first),
+// then leftovers go wherever the crew is smallest relative to its size. Nobody gets two jobs.
+export function autoAssignEvent(tasks,attendees,sizes,{fresh=false,order=x=>x}={}){
+  const result={};tasks.forEach(t=>{result[t.id]=fresh?[]:unique(t.assigned);});
+  const taken=new Set(Object.values(result).flat());
+  const target=id=>Math.max(1,Math.floor(Number(sizes[id]))||1),load=t=>result[t.id].length/target(t.id);
+  for(const name of order(unique(attendees).filter(n=>!taken.has(n)))){
+    const open=tasks.filter(t=>result[t.id].length<target(t.id));
+    const job=(open.length?open:tasks).reduce((best,t)=>!best||load(t)<load(best)?t:best,null);
+    if(!job)break;result[job.id].push(name);
+  }
+  return result;
+}
 export function completeMaintenance(record,uid,now,expectedDue){
   if(!record||record.nextDue!==expectedDue)throw Error("This maintenance item changed. Refresh before completing it.");
   const interval=Number(record.intervalDays);
