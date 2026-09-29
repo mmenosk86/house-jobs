@@ -136,15 +136,25 @@ const sameName=(a,b)=>a.trim().toLowerCase()===b.trim().toLowerCase();
 
 function EventSetup({ops,event,names,projects}){
  const tasks=rows(event.tasks),open=tasks.filter(t=>t.status==="pending");
- const choices=[...(event.kind==="woth"?WOTH_TEMPLATE.map(t=>({...t,group:"Remodel crews"})):[]),...(projects||[]).map(p=>({key:"project:"+p.id,name:p.name,desc:"",size:1,group:(p.area||"House")+" projects"}))].filter(c=>!tasks.some(t=>sameName(t.name,c.name)));
+ const choices=[...(event.kind==="woth"?WOTH_TEMPLATE.map(t=>({...t,group:"Suggested crews"})):[]),...(projects||[]).map(p=>({key:"project:"+p.id,name:p.name,desc:"",size:1,group:(p.area||"House")+" projects"}))].filter(c=>!tasks.some(t=>sameName(t.name,c.name)));
  const groups=unique(choices.map(c=>c.group));
  const[picked,setPicked]=useState([]),[sizes,setSizes]=useState({}),[attendees,setAttendees]=useState(names),[fresh,setFresh]=useState(false),[plan,setPlan]=useState(null),[notice,setNotice]=useState("");
- const sizeOf=t=>sizes[t.id]??WOTH_TEMPLATE.find(x=>sameName(x.name,t.name))?.size??1;
+ const[custom,setCustom]=useState({name:"",desc:"",size:2}),[bulk,setBulk]=useState("");
+ // Crew sizes aren't stored on the job itself, so remember them by job name on this device.
+ const[savedSizes,setSavedSizes]=useState(()=>{try{return JSON.parse(localStorage.getItem("housejobs:eventCrewSizes:v1")||"{}");}catch{return{};}});
+ function rememberSizes(entries){const next={...savedSizes};entries.forEach(([n,s])=>{next[n.trim().toLowerCase()]=Number(s)||1;});setSavedSizes(next);try{localStorage.setItem("housejobs:eventCrewSizes:v1",JSON.stringify(next));}catch{}}
+ const sizeOf=t=>sizes[t.id]??savedSizes[t.name.trim().toLowerCase()]??WOTH_TEMPLATE.find(x=>sameName(x.name,t.name))?.size??1;
  const toggleAll=(list,on)=>setPicked(on?unique([...picked,...list.map(c=>c.key)]):picked.filter(k=>!list.some(c=>c.key===k)));
- async function addJobs(){
-  const changes={};choices.filter(c=>picked.includes(c.key)).forEach(c=>{changes[`houseOps/events/${event.id}/tasks/${newId()}`]={name:c.name,desc:c.desc,assigned:[],status:"pending"};});
-  if(await ops.run(()=>ops.api.update("",changes))){setPicked([]);setNotice(`Added ${Object.keys(changes).length} jobs.`);}
+ async function saveJobs(jobs){
+  const adding=jobs.filter((j,i)=>j.name.trim()&&!tasks.some(t=>sameName(t.name,j.name))&&jobs.findIndex(x=>sameName(x.name,j.name))===i);
+  if(!adding.length){setNotice("Those jobs are already on this event.");return false;}
+  const changes={};adding.forEach(j=>{changes[`houseOps/events/${event.id}/tasks/${newId()}`]={name:j.name.trim(),desc:(j.desc||"").trim(),assigned:[],status:"pending"};});
+  if(!await ops.run(()=>ops.api.update("",changes)))return false;
+  rememberSizes(adding.filter(j=>j.size).map(j=>[j.name,j.size]));setNotice(`Added ${adding.length} job${adding.length===1?"":"s"}.`);return true;
  }
+ async function addJobs(){if(await saveJobs(choices.filter(c=>picked.includes(c.key))))setPicked([]);}
+ async function addCustom(e){e.preventDefault();if(await saveJobs([custom]))setCustom({name:"",desc:"",size:2});}
+ async function addBulk(){if(await saveJobs(bulk.split("\n").map(name=>({name,size:1}))))setBulk("");}
  function preview(){setPlan(autoAssignEvent(open,attendees,Object.fromEntries(open.map(t=>[t.id,sizeOf(t)])),{fresh,order:shuffled}));}
  async function savePlan(){
   const changes={};Object.entries(plan).filter(([id])=>open.some(t=>t.id===id)).forEach(([id,assigned])=>{changes[`houseOps/events/${event.id}/tasks/${id}/assigned`]=assigned;});
@@ -156,17 +166,19 @@ function EventSetup({ops,event,names,projects}){
   try{await navigator.clipboard.writeText(text);setNotice("Roster copied. Paste it in the group chat.");}catch{setNotice("Copy is unavailable in this browser.");}
  }
  return <div className="panel"><h3>Set up this event</h3>{notice&&<p role="status">{notice}</p>}
- <details open={!tasks.length||undefined}><summary>1 · Add jobs ({choices.length} available)</summary>
-  {!choices.length&&<p>Every crew and project is already on this event.</p>}
-  {groups.map(g=>{const list=choices.filter(c=>c.group===g),on=list.filter(c=>picked.includes(c.key)).length;return <details key={g} open={g==="Remodel crews"||undefined}><summary>{g} · {on}/{list.length} selected</summary><div className="actions"><button type="button" onClick={()=>toggleAll(list,true)}>Select all</button><button type="button" onClick={()=>toggleAll(list,false)}>Clear</button></div>
-   {list.map(c=><label key={c.key} style={{display:"flex",gap:8,alignItems:"flex-start"}}><input type="checkbox" checked={picked.includes(c.key)} onChange={e=>setPicked(e.target.checked?[...picked,c.key]:picked.filter(k=>k!==c.key))}/><span>{c.name}{c.group==="Remodel crews"&&<small> · crew of {c.size}</small>}</span></label>)}</details>;})}
-  <button disabled={ops.busy||!picked.length} onClick={addJobs}>Add {picked.length} job{picked.length===1?"":"s"}</button>
+ <details open={!tasks.length||undefined}><summary>1 · Add jobs</summary>
+  <form onSubmit={addCustom}><h3>Your own job</h3><Field label="Job name" required maxLength={200} value={custom.name} onChange={e=>setCustom({...custom,name:e.target.value})}/><label>Instructions (one step per line)<textarea maxLength={2000} value={custom.desc} onChange={e=>setCustom({...custom,desc:e.target.value})}/></label><Field label="Crew size" type="number" min="1" max="30" value={custom.size} onChange={e=>setCustom({...custom,size:e.target.value})}/><button disabled={ops.busy}>Add job</button></form>
+  <details><summary>Add several at once</summary><label>One job per line. Add instructions later with Edit assignment.<textarea rows={5} value={bulk} onChange={e=>setBulk(e.target.value)} placeholder={"Fix pool room door\nClean out the garage\nRehang chapter room curtains"}/></label><button disabled={ops.busy||!bulk.trim()} onClick={addBulk}>Add {bulk.split("\n").filter(x=>x.trim()).length} jobs</button></details>
+  {choices.length>0&&<p>Or pick from suggestions and your house projects list:</p>}
+  {groups.map(g=>{const list=choices.filter(c=>c.group===g),on=list.filter(c=>picked.includes(c.key)).length;return <details key={g} open={g==="Suggested crews"||undefined}><summary>{g} · {on}/{list.length} selected</summary><div className="actions"><button type="button" onClick={()=>toggleAll(list,true)}>Select all</button><button type="button" onClick={()=>toggleAll(list,false)}>Clear</button></div>
+   {list.map(c=><label key={c.key} style={{display:"flex",gap:8,alignItems:"flex-start"}}><input type="checkbox" checked={picked.includes(c.key)} onChange={e=>setPicked(e.target.checked?[...picked,c.key]:picked.filter(k=>k!==c.key))}/><span>{c.name}{c.group==="Suggested crews"&&<small> · crew of {c.size}</small>}</span></label>)}</details>;})}
+  {choices.length>0&&<button disabled={ops.busy||!picked.length} onClick={addJobs}>Add {picked.length} selected</button>}
  </details>
  <details><summary>2 · Auto-assign brothers ({attendees.length} attending)</summary>
   {!open.length?<p>Add jobs first.</p>:<>
   <p>Who is coming? Uncheck anyone who is out.</p><div className="actions"><button type="button" onClick={()=>setAttendees(names)}>Everyone</button><button type="button" onClick={()=>setAttendees([])}>Nobody</button></div><Names names={names} value={attendees} onChange={setAttendees}/>
   <p>Crew size per job. Extra people go to the biggest crews.</p>
-  {open.map(t=><div className="roll" key={t.id}><span>{t.name}</span><input type="number" min="1" max="30" aria-label={`Crew size for ${t.name}`} value={sizeOf(t)} onChange={e=>{setSizes({...sizes,[t.id]:e.target.value});setPlan(null);}}/></div>)}
+  {open.map(t=><div className="roll" key={t.id}><span>{t.name}</span><input type="number" min="1" max="30" aria-label={`Crew size for ${t.name}`} value={sizeOf(t)} onChange={e=>{setSizes({...sizes,[t.id]:e.target.value});rememberSizes([[t.name,e.target.value]]);setPlan(null);}}/></div>)}
   <label><input type="checkbox" checked={fresh} onChange={e=>{setFresh(e.target.checked);setPlan(null);}}/> Start over (clear current assignments on open jobs)</label>
   <div className="actions"><button type="button" disabled={!attendees.length} onClick={preview}>{plan?"Shuffle again":"Preview assignments"}</button>{plan&&<button disabled={ops.busy} onClick={savePlan}>Save assignments</button>}</div>
   {plan&&<div className="panel">{open.map(t=><p key={t.id}><strong>{t.name}</strong> ({plan[t.id].length}/{sizeOf(t)}): {plan[t.id].join(", ")||"nobody"}</p>)}</div>}</>}
