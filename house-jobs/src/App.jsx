@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {useHouseOperations,SundayAttendance,Requests,Supplies,Maintenance,Events,OpsPersonal,OpsManager} from "./HouseOperations.jsx";
 import {keyOf,reconcileMakeups} from "./houseOpsCore.js";
+import {scheduleWeekly,crewSize,MAX_PER_JOB} from "./weeklyCore.js";
 
 /*
  * HOUSE JOBS — HOUSE HQ v3 — HOUSE OPERATIONS (Spark, Firebase Auth, no Storage)
@@ -167,46 +168,10 @@ const DIFF_COLORS = { easy:{ bg:"#D4A84318", color:"#D4A843", border:"#D4A84340"
 // ─── HELPERS ───
 function shuffle(arr) { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 
-// Map job areas to brother floors
-const AREA_TO_FLOOR = { basement:"basement", first:"first", second:"second", third:"third" };
-
 function getBrotherNames(brothers){ return brothers.map(b=>typeof b==="string"?b:b.name); }
 
-function generateAssignments(brothers, jobs, weeks) {
-  const bList = brothers.map(b=>typeof b==="string"?{name:b,floor:"first"}:b);
-  const allNames = shuffle(bList.map(b=>b.name));
-  const byFloor = {};
-  bList.forEach(b=>{if(!byFloor[b.floor])byFloor[b.floor]=[];byFloor[b.floor].push(b.name);});
-  Object.keys(byFloor).forEach(f=>{byFloor[f]=shuffle(byFloor[f]);});
-  const workload={}; allNames.forEach(n=>{workload[n]=0;});
-  function pickLeastLoaded(pool,count){
-    const sorted=[...pool].sort((a,b)=>(workload[a]||0)-(workload[b]||0));
-    const picked=sorted.slice(0,count);
-    picked.forEach(n=>{workload[n]=(workload[n]||0)+1;});
-    return picked;
-  }
-  const staticAssignments={};
-  jobs.filter(job=>!job.rotating&&!job.floorRotate).forEach(job=>{
-    const floor=AREA_TO_FLOOR[job.area];
-    const pool=floor&&byFloor[floor]?.length?byFloor[floor]:allNames;
-    staticAssignments[job.id]=pickLeastLoaded(pool,job.people);
-  });
-  const asg={};
-  weeks.forEach(week=>{
-    asg[week]={};
-    jobs.forEach(job=>{
-      let assigned;
-      if(job.rotating)assigned=pickLeastLoaded(allNames,job.people);
-      else if(job.floorRotate){
-        const floor=AREA_TO_FLOOR[job.area];
-        const pool=floor&&byFloor[floor]?.length?byFloor[floor]:allNames;
-        assigned=pickLeastLoaded(pool,job.people);
-      }else assigned=[...(staticAssignments[job.id]||[])];
-      asg[week][job.id]={assigned,status:"pending"};
-    });
-  });
-  return asg;
-}
+// Fresh weekly schedule for the whole semester; rules live in weeklyCore.js.
+function generateAssignments(brothers,jobs,weeks,chairs={},locks=[]){return scheduleWeekly({brothers,jobs,weeks,chairs,locks});}
 
 function kitchenPoolKey(pool){return[...new Set(pool)].sort().join("|");}
 function pickKitchenTeam(pool,count,history=[]){
@@ -448,6 +413,9 @@ export default function HouseJobsApp(){
   const[jobs,setJobs]=useState(DEFAULT_JOBS);
   const[weeks,setWeeks]=useState(DEFAULT_WEEKS);
   const[assignments,setAssignments]=useState({});
+  // Chairs: {jobId: name} — that person always has that job. Locks: manager assignments for a range of weeks.
+  const[chairs,setChairs]=useState({});
+  const[locks,setLocks]=useState([]);
   const[currentWeekIdx,setCurrentWeekIdx]=useState(0);
   const[selectedBrother,setSelectedBrother]=useState(null);
   const[showJobDetail,setShowJobDetail]=useState(null);
@@ -562,8 +530,8 @@ export default function HouseJobsApp(){
       ]);
       const w=cfg?.weeks||DEFAULT_WEEKS;
       weeksRef.current=w;
-      if(cfg){setBrothers(cfg.brothers||DEFAULT_BROTHERS);setJobs(cfg.jobs||DEFAULT_JOBS);setWeeks(w);setSemesterName(cfg.semesterName||"Fall 2026");}
-      if(asg)setAssignments(desanitizeObjKeys(asg,w));else{const a=generateAssignments(cfg?.brothers||DEFAULT_BROTHERS,cfg?.jobs||DEFAULT_JOBS,w);setAssignments(a);await fbSet("assignments",sanitizeObjKeys(a));}
+      if(cfg){setBrothers(cfg.brothers||DEFAULT_BROTHERS);setJobs(cfg.jobs||DEFAULT_JOBS);setWeeks(w);setSemesterName(cfg.semesterName||"Fall 2026");setChairs(cfg.chairs||{});setLocks(cfg.locks||[]);}
+      if(asg)setAssignments(desanitizeObjKeys(asg,w));else{const a=generateAssignments(cfg?.brothers||DEFAULT_BROTHERS,cfg?.jobs||DEFAULT_JOBS,w,cfg?.chairs,cfg?.locks);setAssignments(a);await fbSet("assignments",sanitizeObjKeys(a));}
       if(sunCfg){setEvenPins(sunCfg.evenPins||DEFAULT_EVEN_PINS);setOddPins(sunCfg.oddPins||DEFAULT_ODD_PINS);setSundayJobs(sunCfg.sundayJobs||DEFAULT_SUNDAY_JOBS);}
       if(sunAsg)setSundayAssignments(desanitizeObjKeys(sunAsg,w));else{const sa=generateSundayAssignments(sunCfg?.evenPins||DEFAULT_EVEN_PINS,sunCfg?.oddPins||DEFAULT_ODD_PINS,sunCfg?.sundayJobs||DEFAULT_SUNDAY_JOBS,w);setSundayAssignments(sa);await fbSet("sundayAssignments",sanitizeObjKeys(sa));}
       if(projCfg)setProjects(projCfg);
@@ -573,7 +541,7 @@ export default function HouseJobsApp(){
       if(issues)setHouseIssues(Array.isArray(issues)?issues:Object.values(issues));
       if(archiveData)setArchives(archiveData);
       fbOnValue("assignments",d=>{if(skipSync.current){skipSync.current=false;return;}setAssignments(d?desanitizeObjKeys(d,weeksRef.current):{});});
-      fbOnValue("config",d=>{if(d){const nextWeeks=d.weeks||DEFAULT_WEEKS;weeksRef.current=nextWeeks;setBrothers(d.brothers||DEFAULT_BROTHERS);setJobs(d.jobs||DEFAULT_JOBS);setWeeks(nextWeeks);setSemesterName(d.semesterName||"Fall 2026");}});
+      fbOnValue("config",d=>{if(d){const nextWeeks=d.weeks||DEFAULT_WEEKS;weeksRef.current=nextWeeks;setBrothers(d.brothers||DEFAULT_BROTHERS);setJobs(d.jobs||DEFAULT_JOBS);setWeeks(nextWeeks);setSemesterName(d.semesterName||"Fall 2026");setChairs(d.chairs||{});setLocks(d.locks||[]);}});
       fbOnValue("sundayAssignments",d=>{if(skipSunSync.current){skipSunSync.current=false;return;}setSundayAssignments(d?desanitizeObjKeys(d,weeksRef.current):{});});
       fbOnValue("sundayConfig",d=>{if(d){setEvenPins(d.evenPins||DEFAULT_EVEN_PINS);setOddPins(d.oddPins||DEFAULT_ODD_PINS);setSundayJobs(d.sundayJobs||DEFAULT_SUNDAY_JOBS);}});
       fbOnValue("weeklyProjects",d=>{if(skipProjSync.current){skipProjSync.current=false;return;}setWeeklyProjects(d?desanitizeObjKeys(d,weeksRef.current):{});});
@@ -587,7 +555,7 @@ export default function HouseJobsApp(){
     }else{
       try{
         const cfg=await localStoreGet("housejobs:config"),asg=await localStoreGet("housejobs:assignments");
-        if(cfg?.value){const p=JSON.parse(cfg.value);setBrothers(p.brothers||DEFAULT_BROTHERS);setJobs(p.jobs||DEFAULT_JOBS);setWeeks(p.weeks||DEFAULT_WEEKS);setSemesterName(p.semesterName||"Fall 2026");}
+        if(cfg?.value){const p=JSON.parse(cfg.value);setBrothers(p.brothers||DEFAULT_BROTHERS);setJobs(p.jobs||DEFAULT_JOBS);setWeeks(p.weeks||DEFAULT_WEEKS);setSemesterName(p.semesterName||"Fall 2026");setChairs(p.chairs||{});setLocks(p.locks||[]);}
         if(asg?.value)setAssignments(JSON.parse(asg.value));else setAssignments(generateAssignments(DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_WEEKS));
         const sunCfg=await localStoreGet("housejobs:sundayConfig"),sunAsg=await localStoreGet("housejobs:sundayAssignments");
         if(sunCfg?.value){const p=JSON.parse(sunCfg.value);setEvenPins(p.evenPins||DEFAULT_EVEN_PINS);setOddPins(p.oddPins||DEFAULT_ODD_PINS);setSundayJobs(p.sundayJobs||DEFAULT_SUNDAY_JOBS);}
@@ -636,9 +604,10 @@ export default function HouseJobsApp(){
       setAssignments(desanitizeObjKeys(result.snapshot.val()||{},weeksRef.current));
     }else await localStoreSet("housejobs:assignments",JSON.stringify(a));
   }),[fbConnected,persist]);
-  const saveCfg=useCallback((b,j,w,sn)=>persist("Weekly setup",async()=>{
-    const cleanJobs=j.map(job=>({...job,rotating:!!job.rotating,floorRotate:!!job.floorRotate}));
-    if(fbConnected)await fbSet("config",{brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn});else await localStoreSet("housejobs:config",JSON.stringify({brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn}));}),[fbConnected,persist]);
+  const saveCfg=useCallback((b,j,w,sn,ch=chairs,lk=locks)=>persist("Weekly setup",async()=>{
+    const cleanJobs=j.map(job=>({...job,people:crewSize(job),rotating:!!job.rotating,floorRotate:!!job.floorRotate}));
+    const cfg={brothers:b,jobs:cleanJobs,weeks:w,semesterName:sn,chairs:ch||{},locks:lk||[]};
+    if(fbConnected)await fbSet("config",cfg);else await localStoreSet("housejobs:config",JSON.stringify(cfg));}),[fbConnected,persist,chairs,locks]);
   const saveSunA=useCallback((a,{preserveProgress=true}={})=>persist("Sunday schedule",async()=>{
     const reconcile=current=>{const proposed=sanitizeObjKeys(a);for(const [week,record] of Object.entries(current||{})){if(proposed[week]){for(const field of ["attendance","makeups","makeupVersion","manualMakeups","makeupSources","autoMakeupAssignments"])if(record[field]!==undefined)proposed[week][field]=record[field];if(preserveProgress){proposed[week].jobs??={};for(const [id,job] of Object.entries(record.jobs||{}))if(job?.status&&job.status!=="pending")proposed[week].jobs[id]=job;}}}return reconcileMakeups(proposed,weeks,sundayJobs);};
     if(fbConnected){await fbWriteUser();const result=await fbTransaction("sundayAssignments",reconcile);if(!result?.committed)throw new Error("Firebase did not commit the update.");}
@@ -701,7 +670,7 @@ export default function HouseJobsApp(){
     const timer=setTimeout(()=>setPersistenceNotice(null),2400);
     return()=>clearTimeout(timer);
   },[persistenceNotice]);
-  const weeklySetupSignature=JSON.stringify({brothers,jobs,weeks,semesterName});
+  const weeklySetupSignature=JSON.stringify({brothers,jobs,weeks,semesterName,chairs,locks});
   useEffect(()=>{
     if(loading||!adminUnlocked)return;
     const timer=setTimeout(()=>{saveCfg(brothers,jobs,weeks,semesterName);},650);
@@ -874,103 +843,31 @@ export default function HouseJobsApp(){
     setAssignments(u);
     if(fbConnected)saveAssignmentStatus(week,jobId,next);else saveA(u);
   }
+  // Manager assignment: pin these names to the job from this week for `duration` weeks ("semester" = rest of term).
+  // Saved as a lock so later reshuffles keep it; only the affected weeks are repaired.
   function overrideWeeklyJob(week,jobId,names,duration){
-    const u=JSON.parse(JSON.stringify(assignments));
     const startIdx=weeks.indexOf(week);
     if(startIdx===-1)return;
-    
-    const bList=brothers.map(b=>typeof b==="string"?{name:b,floor:"first"}:b);
-    const allNames=bList.map(b=>b.name);
-    const byFloor={};
-    bList.forEach(b=>{if(!byFloor[b.floor])byFloor[b.floor]=[];byFloor[b.floor].push(b.name);});
-    
-    const numWeeks = duration==="semester" ? weeks.length-startIdx : Math.min(parseInt(duration)||1, weeks.length-startIdx);
-    
-    for(let w=0;w<numWeeks;w++){
-      const wk=weeks[startIdx+w];
-      if(!u[wk])continue;
-      
-      // Find what jobs these people were previously on this week
-      const oldJobIds=[];
-      Object.entries(u[wk]).forEach(([jid,jdata])=>{
-        if(jid===jobId)return;
-        if(!jdata?.assigned)return;
-        const hadPerson=jdata.assigned.some(n=>names.includes(n));
-        if(hadPerson) oldJobIds.push(jid);
-      });
-      
-      // Remove overridden people from their old jobs
-      oldJobIds.forEach(jid=>{
-        u[wk][jid].assigned=u[wk][jid].assigned.filter(n=>!names.includes(n));
-      });
-      
-      // Assign overridden people to the new job
-      u[wk][jobId].assigned=names;
-      
-      // Backfill the old jobs that lost people
-      oldJobIds.forEach(jid=>{
-        const oldJob=jobs.find(j=>j.id===jid);
-        if(!oldJob)return;
-        const needed=oldJob.people-u[wk][jid].assigned.length;
-        if(needed<=0)return;
-        
-        // Find who's already assigned this week across ALL jobs
-        const assignedThisWeek=new Set();
-        Object.values(u[wk]).forEach(jdata=>{if(jdata?.assigned)jdata.assigned.forEach(n=>assignedThisWeek.add(n));});
-        
-        // Pick from appropriate pool, preferring unassigned brothers
-        const floor=AREA_TO_FLOOR[oldJob.area];
-        const pool=floor&&byFloor[floor]?.length?byFloor[floor]:allNames;
-        const unassigned=pool.filter(n=>!assignedThisWeek.has(n));
-        const backfill=shuffle(unassigned).slice(0,needed);
-        
-        // If not enough unassigned, pull least-loaded from pool
-        if(backfill.length<needed){
-          const remaining=pool.filter(n=>!assignedThisWeek.has(n)&&!backfill.includes(n));
-          const alreadyAssigned=pool.filter(n=>assignedThisWeek.has(n)&&!u[wk][jid].assigned.includes(n)&&!names.includes(n));
-          while(backfill.length<needed&&alreadyAssigned.length){backfill.push(alreadyAssigned.shift());}
-        }
-        
-        u[wk][jid].assigned=[...u[wk][jid].assigned,...backfill];
-      });
-    }
-    
-    // Reshuffle remaining weeks after override period for the target job
-    const reshuffleStart = startIdx+numWeeks;
-    if(reshuffleStart<weeks.length){
-      const job=jobs.find(j=>j.id===jobId);
-      if(job){
-        const floor=AREA_TO_FLOOR[job.area];
-        const pool=floor&&byFloor[floor]?.length?byFloor[floor]:allNames;
-        const wl={};pool.forEach(n=>{wl[n]=0;});
-        Object.values(u).forEach(wj=>{if(wj?.[jobId]?.assigned)wj[jobId].assigned.forEach(n=>{if(wl[n]!==undefined)wl[n]++;});});
-        for(let w=reshuffleStart;w<weeks.length;w++){
-          const wk=weeks[w];
-          if(u[wk]?.[jobId]&&u[wk][jobId].status==="pending"){
-            const sorted=[...pool].sort((a,b)=>(wl[a]||0)-(wl[b]||0));
-            const picked=sorted.slice(0,job.people);
-            picked.forEach(n=>{wl[n]=(wl[n]||0)+1;});
-            u[wk][jobId].assigned=picked;
-          }
-        }
-      }
-    }
-    
-    setAssignments(u);
-    saveA(u);
+    const picked=[...new Set(names)].slice(0,MAX_PER_JOB);
+    if(names.length>MAX_PER_JOB)alert(`Only ${MAX_PER_JOB} people can share a job. Kept: ${picked.join(", ")}.`);
+    const endIdx=duration==="semester"?weeks.length-1:Math.min(startIdx+(parseInt(duration)||1)-1,weeks.length-1);
+    const lock={id:Date.now().toString(36),jobId,names:picked,start:weeks[startIdx],end:weeks[endIdx]};
+    const nextLocks=[...locks,lock];
+    setLocks(nextLocks);
+    const u=scheduleWeekly({brothers,jobs,weeks,chairs,locks:nextLocks,existing:assignments,fromIdx:startIdx,repairTo:endIdx});
+    setAssignments(u);saveA(u);
   }
+  function removeLock(id){setLocks(locks.filter(l=>l.id!==id));}
+  // Chair change applies from the current week on, keeping everyone else where they are when possible.
+  function setChair(jobId,name){
+    const next={...chairs};if(name)next[jobId]=name;else delete next[jobId];
+    setChairs(next);
+    const u=scheduleWeekly({brothers,jobs,weeks,chairs:next,locks,existing:assignments,fromIdx:currentWeekIdx,repairTo:weeks.length-1});
+    setAssignments(u);saveA(u);
+  }
+  // Reshuffles from the current week on. Past weeks, finished jobs, chairs and manager assignments stay.
   function reshuffleWeeklyAssignments(){
-    const a=generateAssignments(brothers,jobs,weeks);
-    // Preserve any existing statuses that aren't pending
-    Object.keys(assignments).forEach(week=>{
-      if(a[week]&&assignments[week]){
-        Object.keys(assignments[week]).forEach(jobId=>{
-          if(a[week][jobId]&&assignments[week][jobId].status!=="pending"){
-            a[week][jobId].status=assignments[week][jobId].status;
-          }
-        });
-      }
-    });
+    const a=scheduleWeekly({brothers,jobs,weeks,chairs,locks,existing:assignments,fromIdx:currentWeekIdx});
     setAssignments(a);saveA(a);
   }
   function cycleSundayStatus(week,jobId,isAdmin){
@@ -1057,7 +954,7 @@ export default function HouseJobsApp(){
   async function regenerate(){
     setSaving(true);
     try{
-      const a=generateAssignments(brothers,jobs,weeks);
+      const a=generateAssignments(brothers,jobs,weeks,chairs,locks);
       const sa=generateSundayAssignments(evenPins,oddPins,sundayJobs,weeks);
       const wp=generateWeeklyProjects(projects,weeks);
       const results=await Promise.all([
@@ -1386,16 +1283,17 @@ body{background:#10131c}
                   {unassigned.map(name=><div key={name} style={{display:"flex",alignItems:"center",gap:4,background:"#1C2332",borderRadius:6,padding:"4px 8px",border:"1px solid #364258"}}>
                     <span style={{fontSize:12,color:"#CBD5E1"}}>{name}</span>
                     <button onClick={()=>{
-                      // Find the job with fewest people assigned this week and add them
+                      // Add them to the open job with the fewest people (never past MAX_PER_JOB, never a chair's job)
                       const u=JSON.parse(JSON.stringify(assignments));
                       const wk=currentWeek;
                       if(!u[wk])return;
                       let minJob=null,minCount=Infinity;
                       jobs.forEach(j=>{
-                        if(!u[wk][j.id])return;
+                        if(!u[wk][j.id]||u[wk][j.id].status!=="pending"||chairs[j.id])return;
                         const count=u[wk][j.id].assigned?.length||0;
-                        if(count<minCount){minCount=count;minJob=j.id;}
+                        if(count<MAX_PER_JOB&&count<minCount){minCount=count;minJob=j.id;}
                       });
+                      if(!minJob){alert(`Every open job already has ${MAX_PER_JOB} people this week.`);return;}
                       if(minJob&&u[wk][minJob]){
                         u[wk][minJob].assigned=[...(u[wk][minJob].assigned||[]),name];
                         setAssignments(u);saveA(u);
@@ -1960,10 +1858,25 @@ body{background:#10131c}
             </div>
           </div>}
           {setupTab==="jobs"&&<div>
+            <div className="hm-card" style={{marginBottom:12}}>
+              <h3 style={{fontSize:13,color:"#D4A843",marginBottom:5}}>Chairs</h3>
+              <p style={{fontSize:11,color:"#A0AEC3",lineHeight:1.5,marginBottom:10}}>A chair does their job every week and is never given another one. Changes apply from the current week.</p>
+              {jobs.filter(j=>/kitchen|library/i.test(j.name)).map(j=><label key={j.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,fontSize:12,color:"#CBD5E1",marginBottom:6}}>{j.name} chair
+                <select value={chairs[j.id]||""} onChange={e=>setChair(j.id,e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 8px",fontSize:12,fontFamily:"inherit",minWidth:150}}>
+                  <option value="">No chair (normal rotation)</option>{brotherNames.map(n=><option key={n} value={n}>{n}</option>)}
+                </select></label>)}
+            </div>
+            <div className="hm-card" style={{marginBottom:12}}>
+              <h3 style={{fontSize:13,color:"#D4A843",marginBottom:5}}>Manager assignments</h3>
+              <p style={{fontSize:11,color:"#A0AEC3",lineHeight:1.5,marginBottom:8}}>Set these with ✏️ on a job in the weekly view. Reshuffles keep them. Removing one stops it from being kept on the next reshuffle.</p>
+              {locks.filter(l=>weeks.indexOf(l.end)<0||weeks.indexOf(l.end)>=currentWeekIdx).length===0?<p style={{fontSize:11,color:"#A0AEC3"}}>None active.</p>:locks.filter(l=>weeks.indexOf(l.end)<0||weeks.indexOf(l.end)>=currentWeekIdx).map(l=><div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid #364258"}}>
+                <span style={{fontSize:12,color:"#CBD5E1"}}>{jobs.find(j=>j.id===l.jobId)?.name||l.jobId}: {(l.names||[]).join(", ")} <span style={{color:"#A0AEC3"}}>· {l.start===l.end?l.start:`${l.start} to ${l.end}`}</span></span>
+                <SmallBtn onClick={()=>removeLock(l.id)} color="#EF4444">Remove</SmallBtn></div>)}
+            </div>
             <div style={{background:"#1C2332",borderRadius:10,padding:14,border:"1px solid #364258",marginBottom:12}}>
               <div style={{display:"flex",gap:8,marginBottom:8}}><Input value={editJobName} onChange={setEditJobName} placeholder="Job name..." style={{flex:1}}/><select value={editJobArea} onChange={e=>setEditJobArea(e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 14px",fontSize:13,fontFamily:"inherit"}}>{AREA_KEYS.map(k=><option key={k} value={k}>{AREA_META[k].label}</option>)}</select></div>
               <Input value={editJobDesc} onChange={setEditJobDesc} placeholder="Description..." style={{marginBottom:8}}/>
-              <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"#94A3B8"}}>People:</label><select value={editJobPeople} onChange={e=>setEditJobPeople(+e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></div><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobRotating} onChange={e=>{setEditJobRotating(e.target.checked);if(e.target.checked)setEditJobFloorRotate(false);}} style={{accentColor:"#F59E0B"}}/> Rotating</label><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobFloorRotate} onChange={e=>{setEditJobFloorRotate(e.target.checked);if(e.target.checked)setEditJobRotating(false);}} style={{accentColor:"#06B6D4"}}/> Floor Rotate</label><div style={{flex:1}}/><SmallBtn onClick={()=>{if(editJobName.trim()){setJobs([...jobs,{id:editJobName.trim().toLowerCase().replace(/\s+/g,"_")+"_"+Date.now(),name:editJobName.trim(),area:editJobArea,people:editJobPeople,desc:editJobDesc.trim(),rotating:editJobRotating,floorRotate:editJobFloorRotate}]);setEditJobName("");setEditJobDesc("");setEditJobPeople(1);setEditJobRotating(false);setEditJobFloorRotate(false);}}}>+ Add</SmallBtn></div>
+              <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"#94A3B8"}}>People:</label><select value={editJobPeople} onChange={e=>setEditJobPeople(+e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}><option value={1}>1</option><option value={2}>2</option></select></div><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobRotating} onChange={e=>{setEditJobRotating(e.target.checked);if(e.target.checked)setEditJobFloorRotate(false);}} style={{accentColor:"#F59E0B"}}/> Rotating</label><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobFloorRotate} onChange={e=>{setEditJobFloorRotate(e.target.checked);if(e.target.checked)setEditJobRotating(false);}} style={{accentColor:"#06B6D4"}}/> Floor Rotate</label><div style={{flex:1}}/><SmallBtn onClick={()=>{if(editJobName.trim()){setJobs([...jobs,{id:editJobName.trim().toLowerCase().replace(/\s+/g,"_")+"_"+Date.now(),name:editJobName.trim(),area:editJobArea,people:editJobPeople,desc:editJobDesc.trim(),rotating:editJobRotating,floorRotate:editJobFloorRotate}]);setEditJobName("");setEditJobDesc("");setEditJobPeople(1);setEditJobRotating(false);setEditJobFloorRotate(false);}}}>+ Add</SmallBtn></div>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:4}}>{jobs.map((j,i)=>{
               const isEd=editingJobIdx===i;
@@ -1973,9 +1886,11 @@ body{background:#10131c}
                   <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setEditingJobIdx(i)}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:fc.color,flexShrink:0}}/>
                     <span style={{fontSize:13,color:"#CBD5E1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.name}</span>
-                    <span style={{fontSize:11,color:"#A0AEC3"}}>×{j.people}</span>
+                    <span style={{fontSize:11,color:"#A0AEC3"}}>×{crewSize(j)}</span>
+                    {chairs[j.id]?<span style={{fontSize:10,color:"#D4A843"}}>CHAIR · {chairs[j.id]}</span>:<>
                     {j.rotating&&<span style={{fontSize:10,color:"#F59E0B"}}>ROT</span>}
                     {j.floorRotate&&<span style={{fontSize:10,color:"#06B6D4"}}>FLOOR</span>}
+                    {!j.rotating&&!j.floorRotate&&<span style={{fontSize:10,color:"#94A3B8"}}>SEMESTER</span>}</>}
                   </div>
                   <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
                     <button onClick={()=>setEditingJobIdx(i)} style={{background:"none",border:"none",color:"#A0AEC3",cursor:"pointer",fontSize:13,padding:"0 4px"}}>✏️</button>
@@ -1993,8 +1908,8 @@ body{background:#10131c}
                   <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                     <div style={{display:"flex",alignItems:"center",gap:4}}>
                       <label style={{fontSize:11,color:"#94A3B8"}}>People:</label>
-                      <select value={j.people} onChange={e=>{const n=[...jobs];n[i]={...n[i],people:+e.target.value};setJobs(n);}} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
-                        {[1,2,3,4].map(x=><option key={x} value={x}>{x}</option>)}
+                      <select value={crewSize(j)} onChange={e=>{const n=[...jobs];n[i]={...n[i],people:+e.target.value};setJobs(n);}} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
+                        {[1,2].map(x=><option key={x} value={x}>{x}</option>)}
                       </select>
                     </div>
                     <label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#94A3B8",cursor:"pointer"}}>
