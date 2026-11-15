@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {useHouseOperations,SundayAttendance,Requests,Supplies,Maintenance,Events,OpsPersonal,OpsManager} from "./HouseOperations.jsx";
 import {keyOf,reconcileMakeups} from "./houseOpsCore.js";
 import {scheduleWeekly,crewSize,MAX_PER_JOB} from "./weeklyCore.js";
+import {assignSundayJobs,sundayPool,sundayJobList,KITCHEN_ID,KITCHEN_MAX} from "./sundayCore.js";
 
 /*
  * HOUSE JOBS — HOUSE HQ v3 — HOUSE OPERATIONS (Spark, Firebase Auth, no Storage)
@@ -182,40 +183,17 @@ function pickKitchenTeam(pool,count,history=[]){
   const candidates=unused.length>=count?shuffle(unused):shuffle(pool).sort((a,b)=>(usage[a]||0)-(usage[b]||0));
   return candidates.slice(0,count);
 }
-function assignPoolToSundayJobs(pool,sj){
-  const jobs={}; if(!sj.length||!pool.length)return jobs;
-  const slots=sj.map(j=>({id:j.id,basePeople:j.people,assigned:[]}));
-  const totalBase=slots.reduce((sum,j)=>sum+j.basePeople,0);
-  if(pool.length>=totalBase){
-    let pi=0;
-    slots.forEach(slot=>{for(let p=0;p<slot.basePeople;p++){slot.assigned.push(pool[pi]);pi++;}});
-    let idx=0; while(pi<pool.length){slots[idx%slots.length].assigned.push(pool[pi]);pi++;idx++;}
-  }else{
-    let pi=0; for(let j=0;j<slots.length&&pi<pool.length;j++){slots[j].assigned.push(pool[pi]);pi++;}
-    let idx=0; while(pi<pool.length){slots[idx%slots.length].assigned.push(pool[pi]);pi++;idx++;}
-  }
-  slots.forEach(slot=>{jobs[slot.id]={assigned:slot.assigned,status:"pending"};});
-  return jobs;
-}
-function assignEveryoneToSundayJobs(pool,sj,kitchenTeam=[]){
-  if(!sj.length||!pool.length)return{};
-  const kitchenJob=sj.find(j=>j.id==="sun_kitchen");
-  const selected=kitchenJob?kitchenTeam.filter(name=>pool.includes(name)).slice(0,kitchenJob.people):[];
-  const remainingPool=pool.filter(name=>!selected.includes(name));
-  const remainingJobs=kitchenJob?sj.filter(j=>j.id!=="sun_kitchen"):sj;
-  const jobs=assignPoolToSundayJobs(remainingPool,remainingJobs);
-  if(kitchenJob)jobs[kitchenJob.id]={assigned:selected,status:"pending"};
-  return jobs;
-}
-function generateSundayAssignments(ep,op,sj,weeks){
+// existing: current schedule, so weeks keep their pin group and finished jobs stay put.
+function generateSundayAssignments(ep,op,sj,weeks,existing={}){
   const asg={},kitchenHistory={};
   weeks.forEach((week,wi)=>{
-    const isE=wi%2===0, pool=shuffle(isE?[...ep]:[...op]), key=kitchenPoolKey(pool);
-    const history=kitchenHistory[key]||[], kitchenJob=sj.find(j=>j.id==="sun_kitchen");
-    const kitchenTeam=pickKitchenTeam(pool,kitchenJob?.people||0,history);
-    kitchenHistory[key]=[...history,...kitchenTeam];
-    const wa={group:isE?"even":"odd",bothGroups:false,jobs:{}};
-    wa.jobs=assignEveryoneToSundayJobs(pool,sj,kitchenTeam); asg[week]=wa;
+    const prev=existing?.[week];
+    const wa=prev?{...prev,group:prev.group||(wi%2===0?"even":"odd"),bothGroups:!!prev.bothGroups}:{group:wi%2===0?"even":"odd",bothGroups:false,jobs:{}};
+    const pool=shuffle(sundayPool(wa,ep,op)),key=kitchenPoolKey(pool),history=kitchenHistory[key]||[];
+    const kitchenTeam=pickKitchenTeam(pool,KITCHEN_MAX,history);
+    wa.jobs=assignSundayJobs({pool,jobs:sundayJobList(sj,wa),kitchenTeam,existing:prev});
+    kitchenHistory[key]=[...history,...(wa.jobs[KITCHEN_ID]?.assigned||[])];
+    asg[week]=wa;
   });
   return asg;
 }
@@ -229,10 +207,11 @@ function getKitchenHistory(assignments,weeks,targetWeek,pool){
   return history;
 }
 function regenerateSundayWeek(wa,ep,op,sj,history=[]){
-  const pool=shuffle(wa.bothGroups?[...ep,...op]:wa.group==="even"?[...ep]:[...op]);
-  const kitchenJob=sj.find(j=>j.id==="sun_kitchen");
-  const kitchenTeam=pickKitchenTeam(pool,kitchenJob?.people||0,history);
-  return{...wa,jobs:assignEveryoneToSundayJobs(pool,sj,kitchenTeam)};
+  const pool=shuffle(sundayPool(wa,ep,op));
+  const jobs=assignSundayJobs({pool,jobs:sundayJobList(sj,wa),kitchenTeam:pickKitchenTeam(pool,KITCHEN_MAX,history),existing:wa});
+  // Keep generated makeup slots; their people are not in this week's pin group.
+  Object.entries(wa.jobs||{}).forEach(([id,job])=>{if(id.startsWith("makeup_"))jobs[id]=job;});
+  return{...wa,jobs};
 }
 
 function generateWeeklyProjects(projects, weeks) {
@@ -479,13 +458,11 @@ export default function HouseJobsApp(){
   const[sunSetupTab,setSunSetupTab]=useState("even");
   const[sunEditName,setSunEditName]=useState("");
   const[sunEditJobName,setSunEditJobName]=useState("");
-  const[sunEditJobPeople,setSunEditJobPeople]=useState(2);
   const[sunEditJobDesc,setSunEditJobDesc]=useState("");
   const[editingSunJobIdx,setEditingSunJobIdx]=useState(null);
   // Temp Sunday job
   const[showTempJobForm,setShowTempJobForm]=useState(false);
   const[tempJobName,setTempJobName]=useState("");
-  const[tempJobPeople,setTempJobPeople]=useState(2);
   const[tempJobDesc,setTempJobDesc]=useState("");
   // Project setup
   const[projEditName,setProjEditName]=useState("");
@@ -631,8 +608,10 @@ export default function HouseJobsApp(){
           const ids=new Set((next.tempJobs||[]).map(x=>x.id));
           next.tempJobs=[...(next.tempJobs||[]),...current.tempJobs.filter(x=>!removed.includes(x.id)&&!ids.has(x.id)&&next.jobs[x.id])];
         }
+        // Put makeup people back on their slot, unless the new assignments already gave them a job.
+        const placed=new Set(Object.values(next.jobs).flatMap(j=>j?.assigned||[]));
         for(const added of Object.values(current?.autoMakeupAssignments||{})){
-          if(next.jobs[added.jobId]&&!next.jobs[added.jobId].assigned?.includes(added.name))next.jobs[added.jobId].assigned=[...(next.jobs[added.jobId].assigned||[]),added.name];
+          if(next.jobs[added.jobId]&&!placed.has(added.name)){next.jobs[added.jobId].assigned=[...(next.jobs[added.jobId].assigned||[]),added.name];placed.add(added.name);}
         }
         return next;
       });
@@ -881,24 +860,38 @@ export default function HouseJobsApp(){
     setSundayAssignments(u);
     if(fbConnected)saveSundayStatus(week,jobId,next);else saveSunA(u);
   }
-  function toggleBothGroups(week){
+  // Switch which pins clean on a Sunday ("even", "odd" or "both") and reassign that week.
+  // Optionally flips every later split Sunday too, so the alternation continues from here.
+  function setSundayGroup(week,choice){
     const u=JSON.parse(JSON.stringify(sundayAssignments));
-    if(u[week]){
-      u[week].bothGroups=!u[week].bothGroups;
-      const pool=u[week].bothGroups?[...evenPins,...oddPins]:u[week].group==="even"?evenPins:oddPins;
-      const history=getKitchenHistory(sundayAssignments,weeks,week,pool);
-      u[week]=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs,history);
-    }
+    const cur=u[week];if(!cur)return;
+    const was=cur.bothGroups?"both":cur.group;
+    if(choice===was)return;
+    if(Object.keys(cur.attendance||{}).length&&!confirm("Attendance is already recorded for this Sunday. Switch groups anyway?"))return;
+    const regen=wk=>{u[wk]=regenerateSundayWeek(u[wk],evenPins,oddPins,sundayJobs,getKitchenHistory(u,weeks,wk,sundayPool(u[wk],evenPins,oddPins)));};
+    cur.bothGroups=choice==="both";if(choice!=="both")cur.group=choice;
+    regen(week);
+    const later=weeks.slice(weeks.indexOf(week)+1).filter(wk=>u[wk]&&!u[wk].bothGroups);
+    if(choice!=="both"&&was!=="both"&&later.length&&confirm(`Also swap the ${later.length} Sundays after this one so they keep alternating?`)){
+      later.forEach(wk=>{u[wk].group=u[wk].group==="even"?"odd":"even";regen(wk);});
+      setSundayAssignments(u);saveSunA(u);
+    }else saveSunWeek(week,u[week]);
+  }
+  // Manual names for one job. Those people are taken off any other open job that week, and kitchen stays at 4 or fewer.
+  function overrideSundayJob(week,jobId,names){
+    const u=JSON.parse(JSON.stringify(sundayAssignments));
+    if(!u[week]?.jobs?.[jobId])return;
+    let picked=[...new Set(names)];
+    if(jobId===KITCHEN_ID&&picked.length>KITCHEN_MAX){alert(`Kitchen can have at most ${KITCHEN_MAX} people. Kept: ${picked.slice(0,KITCHEN_MAX).join(", ")}.`);picked=picked.slice(0,KITCHEN_MAX);}
+    Object.entries(u[week].jobs).forEach(([id,job])=>{if(id!==jobId&&job.status==="pending")job.assigned=(job.assigned||[]).filter(n=>!picked.includes(n));});
+    u[week].jobs[jobId].assigned=picked;
     saveSunWeek(week,u[week]);
   }
-  function overrideSundayJob(week,jobId,names){const u=JSON.parse(JSON.stringify(sundayAssignments));if(u[week]?.jobs?.[jobId]){u[week].jobs[jobId].assigned=names;saveSunWeek(week,u[week]);}}
   function reshuffleSundayWeek(week){
     const u=JSON.parse(JSON.stringify(sundayAssignments));
-    if(u[week]){
-      const pool=u[week].bothGroups?[...evenPins,...oddPins]:u[week].group==="even"?evenPins:oddPins;
-      const history=getKitchenHistory(sundayAssignments,weeks,week,pool);
-      u[week]=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs,history);
-    }
+    if(!u[week])return;
+    const history=getKitchenHistory(sundayAssignments,weeks,week,sundayPool(u[week],evenPins,oddPins));
+    u[week]=regenerateSundayWeek(u[week],evenPins,oddPins,sundayJobs,history);
     saveSunWeek(week,u[week]);
   }
 
@@ -1350,7 +1343,7 @@ body{background:#10131c}
         {/* ══════ SUNDAY ══════ */}
         {view==="sunday"&&<div className="fu">
           {(()=>{
-            const pool=sunWeekData.bothGroups?[...evenPins,...oddPins]:sunWeekData.group==="even"?evenPins:oddPins;
+            const pool=sundayPool(sunWeekData,evenPins,oddPins);
             const makeups=sunWeekData.makeups||[];
             const totalPool=new Set([...pool,...makeups]).size;
             const assignedSet=new Set();
@@ -1359,10 +1352,10 @@ body{background:#10131c}
             return<>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <div><h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4}}>Sunday Cleaning</h2><GroupBadge group={sunWeekData.group} bothGroups={sunWeekData.bothGroups}/></div>
-            {adminUnlocked&&<div style={{display:"flex",gap:6}}><SmallBtn onClick={()=>toggleBothGroups(currentWeek)} color="#F59E0B">{sunWeekData.bothGroups?"Split":"Both"}</SmallBtn><SmallBtn onClick={()=>reshuffleSundayWeek(currentWeek)} color="#8B5CF6">Shuffle</SmallBtn></div>}
+            {adminUnlocked&&<div style={{display:"flex",gap:6,alignItems:"center"}}><select aria-label="Which pins clean this Sunday" value={sunWeekData.bothGroups?"both":sunWeekData.group||"even"} onChange={e=>setSundayGroup(currentWeek,e.target.value)} style={{background:"#161C29",border:"1px solid #F59E0B50",color:"#F59E0B",borderRadius:6,padding:"5px 22px 5px 8px",fontSize:12,fontWeight:600,fontFamily:"inherit"}}><option value="even">Even pins</option><option value="odd">Odd pins</option><option value="both">Both groups</option></select><SmallBtn onClick={()=>reshuffleSundayWeek(currentWeek)} color="#8B5CF6">Shuffle</SmallBtn></div>}
           </div>
           <div style={{fontSize:12,color:totalAssigned>=totalPool?"#D4A843":"#F59E0B",marginBottom:8,fontFamily:"'Space Mono',monospace",fontWeight:600}}>{totalAssigned}/{totalPool} brothers assigned</div>
-          {sunWeekData.jobs?.sun_kitchen&&<div style={{background:"#F59E0B10",border:"1px solid #F59E0B30",borderRadius:8,padding:"8px 12px",marginBottom:16,fontSize:12,color:"#FCD34D",lineHeight:1.5}}>🍳 Kitchen rotates through the pin roster. Nobody is assigned to kitchen again until the remaining roster has had a turn.</div>}
+          {sunWeekData.jobs?.sun_kitchen&&<div style={{background:"#F59E0B10",border:"1px solid #F59E0B30",borderRadius:8,padding:"8px 12px",marginBottom:16,fontSize:12,color:"#FCD34D",lineHeight:1.5}}>🍳 Kitchen gets up to {KITCHEN_MAX} people and rotates through the pin roster. Nobody is assigned to kitchen again until the remaining roster has had a turn. Everyone else is spread evenly over the other jobs.</div>}
           {(()=>{
             const fullPool=[...pool,...makeups];
             const unassignedSun=fullPool.filter(n=>!assignedSet.has(n));
@@ -1376,10 +1369,13 @@ body{background:#10131c}
                     const u=JSON.parse(JSON.stringify(sundayAssignments));
                     const wk=currentWeek;
                     if(!u[wk]?.jobs)return;
+                    // Smallest open crew wins; kitchen only while it has fewer than KITCHEN_MAX.
                     let minJob=null,minCount=Infinity;
-                    sundayJobs.forEach(j=>{
-                      if(!u[wk].jobs[j.id])return;
-                      const count=u[wk].jobs[j.id].assigned?.length||0;
+                    sundayJobList(sundayJobs,u[wk]).forEach(j=>{
+                      const e=u[wk].jobs[j.id];
+                      if(!e||e.status!=="pending")return;
+                      const count=e.assigned?.length||0;
+                      if(j.id===KITCHEN_ID&&count>=KITCHEN_MAX)return;
                       if(count<minCount){minCount=count;minJob=j.id;}
                     });
                     if(minJob&&u[wk].jobs[minJob]){
@@ -1420,12 +1416,7 @@ body{background:#10131c}
               <Input value={tempJobName} onChange={setTempJobName} placeholder="Job name..." style={{marginBottom:8}}/>
               <Input value={tempJobDesc} onChange={setTempJobDesc} placeholder="Description..." style={{marginBottom:8}}/>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <label style={{fontSize:11,color:"#94A3B8"}}>People:</label>
-                  <select value={tempJobPeople} onChange={e=>setTempJobPeople(+e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
-                    {[1,2,3,4,5,6,7,8].map(n=><option key={n} value={n}>{n}</option>)}
-                  </select>
-                </div>
+                <span style={{fontSize:11,color:"#A0AEC3"}}>Gets people on the next Shuffle, or use ✏️.</span>
                 <div style={{flex:1}}/>
                 <SmallBtn onClick={()=>{
                   if(!tempJobName.trim())return;
@@ -1435,10 +1426,10 @@ body{background:#10131c}
                     u[currentWeek].jobs[tempId]={assigned:[],status:"pending"};
                     // Also add it as a display reference
                     if(!u[currentWeek].tempJobs)u[currentWeek].tempJobs=[];
-                    u[currentWeek].tempJobs.push({id:tempId,name:tempJobName.trim(),people:tempJobPeople,desc:tempJobDesc.trim()});
+                    u[currentWeek].tempJobs.push({id:tempId,name:tempJobName.trim(),desc:tempJobDesc.trim()});
                     saveSunWeek(currentWeek,u[currentWeek]);
                   }
-                  setTempJobName("");setTempJobDesc("");setTempJobPeople(2);setShowTempJobForm(false);
+                  setTempJobName("");setTempJobDesc("");setShowTempJobForm(false);
                 }} color="#C41E3A">Add</SmallBtn>
                 <SmallBtn onClick={()=>{setShowTempJobForm(false);setTempJobName("");setTempJobDesc("");}} color="#A0AEC3">Cancel</SmallBtn>
               </div>
@@ -1495,14 +1486,14 @@ body{background:#10131c}
           {sunSetupTab==="even"&&<div><div style={{display:"flex",gap:8,marginBottom:12}}><Input value={sunEditName} onChange={setSunEditName} placeholder="Add even pin..." style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditName.trim()){const n=[...evenPins,sunEditName.trim()];setEvenPins(n);saveSunCfg(n,oddPins,sundayJobs);setSunEditName("");}}} color="#8B5CF6">+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{evenPins.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1C2332",borderRadius:8,padding:"8px 12px",border:"1px solid #364258"}}><span style={{fontSize:14,color:"#CBD5E1"}}>{b}</span><button onClick={()=>{const n=evenPins.filter((_,j)=>j!==i);setEvenPins(n);saveSunCfg(n,oddPins,sundayJobs);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
           {sunSetupTab==="odd"&&<div><div style={{display:"flex",gap:8,marginBottom:12}}><Input value={sunEditName} onChange={setSunEditName} placeholder="Add odd pin..." style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditName.trim()){const n=[...oddPins,sunEditName.trim()];setOddPins(n);saveSunCfg(evenPins,n,sundayJobs);setSunEditName("");}}} color="#06B6D4">+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{oddPins.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1C2332",borderRadius:8,padding:"8px 12px",border:"1px solid #364258"}}><span style={{fontSize:14,color:"#CBD5E1"}}>{b}</span><button onClick={()=>{const n=oddPins.filter((_,j)=>j!==i);setOddPins(n);saveSunCfg(evenPins,n,sundayJobs);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
           {sunSetupTab==="sunjobs"&&<div>
-            <div style={{background:"#1C2332",borderRadius:10,padding:14,border:"1px solid #364258",marginBottom:12}}><Input value={sunEditJobName} onChange={setSunEditJobName} placeholder="Job name..." style={{marginBottom:8}}/><Input value={sunEditJobDesc} onChange={setSunEditJobDesc} placeholder="Description..." style={{marginBottom:8}}/><div style={{display:"flex",gap:12,alignItems:"center"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"#94A3B8"}}>People:</label><select value={sunEditJobPeople} onChange={e=>setSunEditJobPeople(+e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}>{[1,2,3,4,5,6,7,8].map(n=><option key={n} value={n}>{n}</option>)}</select></div><div style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditJobName.trim()){const n=[...sundayJobs,{id:"sun_"+Date.now(),name:sunEditJobName.trim(),people:sunEditJobPeople,desc:sunEditJobDesc.trim()}];setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);setSunEditJobName("");setSunEditJobDesc("");setSunEditJobPeople(2);}}} color="#8B5CF6">+ Add</SmallBtn></div></div>
+            <div style={{background:"#1C2332",borderRadius:10,padding:14,border:"1px solid #364258",marginBottom:12}}><Input value={sunEditJobName} onChange={setSunEditJobName} placeholder="Job name..." style={{marginBottom:8}}/><Input value={sunEditJobDesc} onChange={setSunEditJobDesc} placeholder="Description..." style={{marginBottom:8}}/><div style={{display:"flex",gap:12,alignItems:"center"}}><span style={{fontSize:11,color:"#A0AEC3"}}>People are spread evenly over jobs; kitchen gets up to {KITCHEN_MAX}.</span><div style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditJobName.trim()){const n=[...sundayJobs,{id:"sun_"+Date.now(),name:sunEditJobName.trim(),desc:sunEditJobDesc.trim()}];setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);setSunEditJobName("");setSunEditJobDesc("");}}} color="#8B5CF6">+ Add</SmallBtn></div></div>
             <div style={{display:"flex",flexDirection:"column",gap:4}}>{sundayJobs.map((j,i)=>{
               const isEd=editingSunJobIdx===i;
               return<div key={j.id} style={{background:"#1C2332",borderRadius:8,padding:isEd?"12px":"8px 12px",border:`1px solid ${isEd?"#8B5CF6":"#364258"}`}}>
                 {!isEd?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <div style={{cursor:"pointer",flex:1}} onClick={()=>setEditingSunJobIdx(i)}>
                     <span style={{fontSize:13,color:"#CBD5E1"}}>{j.name}</span>
-                    <span style={{fontSize:11,color:"#A0AEC3",marginLeft:8}}>×{j.people}</span>
+                    {j.id===KITCHEN_ID&&<span style={{fontSize:11,color:"#A0AEC3",marginLeft:8}}>up to {KITCHEN_MAX}</span>}
                   </div>
                   <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
                     <button onClick={()=>setEditingSunJobIdx(i)} style={{background:"none",border:"none",color:"#A0AEC3",cursor:"pointer",fontSize:13,padding:"0 4px"}}>✏️</button>
@@ -1513,12 +1504,6 @@ body{background:#10131c}
                   <Input value={j.name} onChange={v=>{const n=[...sundayJobs];n[i]={...n[i],name:v};setSundayJobs(n);}} placeholder="Job name" style={{padding:"8px 10px",fontSize:13}}/>
                   <Input value={j.desc||""} onChange={v=>{const n=[...sundayJobs];n[i]={...n[i],desc:v};setSundayJobs(n);}} placeholder="Description" style={{padding:"8px 10px",fontSize:12}}/>
                   <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:4}}>
-                      <label style={{fontSize:11,color:"#94A3B8"}}>People:</label>
-                      <select value={j.people} onChange={e=>{const n=[...sundayJobs];n[i]={...n[i],people:+e.target.value};setSundayJobs(n);}} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
-                        {[1,2,3,4,5,6,7,8].map(x=><option key={x} value={x}>{x}</option>)}
-                      </select>
-                    </div>
                     <div style={{flex:1}}/>
                     <SmallBtn onClick={()=>{saveSunCfg(evenPins,oddPins,sundayJobs);setEditingSunJobIdx(null);}} color="#D4A843">Done</SmallBtn>
                     <button onClick={()=>{const n=sundayJobs.filter((_,k)=>k!==i);setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);setEditingSunJobIdx(null);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>Delete</button>
@@ -1527,7 +1512,7 @@ body{background:#10131c}
               </div>;})}
             </div>
           </div>}
-          <button onClick={()=>{const sa=generateSundayAssignments(evenPins,oddPins,sundayJobs,weeks);setSundayAssignments(sa);saveSunA(sa);setView("sunday");}} style={{marginTop:20,width:"100%",background:"linear-gradient(135deg,#8B5CF6,#7C3AED)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔄 Regenerate Sunday</button>
+          <button onClick={()=>{const sa=generateSundayAssignments(evenPins,oddPins,sundayJobs,weeks,sundayAssignments);setSundayAssignments(sa);saveSunA(sa);setView("sunday");}} style={{marginTop:20,width:"100%",background:"linear-gradient(135deg,#8B5CF6,#7C3AED)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔄 Regenerate Sunday</button>
         </div>}
 
         {/* ══════ PROJECTS ══════ */}
