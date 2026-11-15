@@ -149,24 +149,26 @@ const PROJECTS_PER_WEEK = 5;
 
 const AREA_META = {
   basement:{ label:"Basement", color:"#6B7280" },
-  first:{ label:"1st Floor", color:"#8B5CF6" },
-  second:{ label:"2nd Floor", color:"#3B82F6" },
-  third:{ label:"3rd Floor", color:"#06B6D4" },
-  common:{ label:"Common", color:"#F59E0B" },
-  outside:{ label:"Outside", color:"#D4A843" },
+  first:{ label:"1st Floor", color:"var(--purple)" },
+  second:{ label:"2nd Floor", color:"var(--blue)" },
+  third:{ label:"3rd Floor", color:"var(--cyan)" },
+  common:{ label:"Common", color:"var(--amber)" },
+  outside:{ label:"Outside", color:"var(--gold)" },
 };
 const AREA_KEYS = Object.keys(AREA_META);
 const STATUS_CYCLE = ["pending","done","missed","verified"];
 const STATUS_CONFIG = {
-  pending:{ bg:"#FEF3C7", border:"#F59E0B", text:"#92400E", label:"Pending" },
-  done:{ bg:"#FDF3D7", border:"#D4A843", text:"#6B5220", label:"Done" },
-  missed:{ bg:"#FEE2E2", border:"#EF4444", text:"#991B1B", label:"Missed" },
-  verified:{ bg:"#DBEAFE", border:"#3B82F6", text:"#1E40AF", label:"Verified" },
-  excused:{ bg:"#E5E7EB", border:"#9CA3AF", text:"#374151", label:"Excused" },
+  pending:{ bg:"#FEF3C7", border:"var(--amber)", text:"#92400E", label:"Pending" },
+  done:{ bg:"#FDF3D7", border:"var(--gold)", text:"#6B5220", label:"Done" },
+  missed:{ bg:"#FEE2E2", border:"var(--red)", text:"#991B1B", label:"Missed" },
+  verified:{ bg:"#DBEAFE", border:"var(--blue)", text:"#1E40AF", label:"Verified" },
+  excused:{ bg:"#E5E7EB", border:"var(--muted)", text:"#374151", label:"Excused" },
 };
-const DIFF_COLORS = { easy:{ bg:"#D4A84318", color:"#D4A843", border:"#D4A84340", pts:1 }, medium:{ bg:"#F59E0B18", color:"#F59E0B", border:"#F59E0B40", pts:2 } };
+const DIFF_COLORS = { easy:{ bg:"color-mix(in srgb, var(--gold) 9%, transparent)", color:"var(--gold)", border:"color-mix(in srgb, var(--gold) 25%, transparent)", pts:1 }, medium:{ bg:"color-mix(in srgb, var(--amber) 9%, transparent)", color:"var(--amber)", border:"color-mix(in srgb, var(--amber) 25%, transparent)", pts:2 } };
 
 // ─── HELPERS ───
+// Translucent version of any color (hex or var(--x)), e.g. tint("var(--gold)",10) for a light gold wash.
+const tint=(color,pct)=>`color-mix(in srgb, ${color} ${pct}%, transparent)`;
 function shuffle(arr) { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 
 function getBrotherNames(brothers){ return brothers.map(b=>typeof b==="string"?b:b.name); }
@@ -334,15 +336,27 @@ function completionErrorText(error){
   return`Could not submit this job${code?` (${code})`:""}.${detail?` ${detail}`:" Refresh and try again."}`;
 }
 // ─── COMPONENTS ───
-function StatusBadge({status,onClick,disabled}){const c=STATUS_CONFIG[status]||STATUS_CONFIG.pending;return<button onClick={disabled?undefined:onClick} style={{background:c.bg,border:`1.5px solid ${c.border}`,color:c.text,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,cursor:disabled?"default":"pointer",fontFamily:"inherit",opacity:disabled?.7:1}}>{c.label}</button>;}
-function Input({value,onChange,placeholder,style,type="text"}){return<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 14px",fontSize:14,fontFamily:"inherit",width:"100%",outline:"none",...style}} onFocus={e=>e.target.style.borderColor="#D4A843"} onBlur={e=>e.target.style.borderColor="#364258"}/>;}
-function SmallBtn({children,onClick,color="#D4A843"}){return<button onClick={onClick} style={{background:`${color}18`,border:`1px solid ${color}50`,color,borderRadius:6,padding:"5px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{children}</button>;}
-function SyncDot({connected}){return<div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:7,height:7,borderRadius:"50%",background:connected?"#D4A843":"#EF4444",boxShadow:connected?"0 0 6px #D4A84380":"0 0 6px #EF444480"}}/><span style={{fontSize:10,color:"#A0AEC3",fontFamily:"'Space Mono',monospace"}}>{connected?"LIVE":"LOCAL"}</span></div>;}
-function GroupBadge({group,bothGroups}){if(bothGroups)return<span style={{fontSize:11,fontWeight:700,color:"#F59E0B",background:"#F59E0B18",padding:"2px 8px",borderRadius:4,border:"1px solid #F59E0B30"}}>BOTH GROUPS</span>;const e=group==="even";return<span style={{fontSize:11,fontWeight:700,color:e?"#8B5CF6":"#06B6D4",background:e?"#8B5CF618":"#06B6D418",padding:"2px 8px",borderRadius:4,border:`1px solid ${e?"#8B5CF630":"#06B6D430"}`}}>{e?"EVEN PINS":"ODD PINS"}</span>;}
+function StatusBadge({status,onClick,disabled}){const c=STATUS_CONFIG[status]||STATUS_CONFIG.pending;return<button onClick={disabled?undefined:onClick} style={{background:c.bg,border:`1.5px solid ${c.border}`,color:c.text,borderRadius:999,padding:"6px 12px",minHeight:34,fontSize:12,fontWeight:700,whiteSpace:"nowrap",cursor:disabled?"default":"pointer",fontFamily:"inherit",opacity:disabled?.7:1}}>{c.label}</button>;}
+function Input({value,onChange,placeholder,style,type="text"}){return<input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:8,padding:"10px 14px",fontSize:14,fontFamily:"inherit",width:"100%",outline:"none",...style}} onFocus={e=>e.target.style.borderColor="var(--gold)"} onBlur={e=>e.target.style.borderColor="var(--line)"}/>;}
+function SmallBtn({children,onClick,color="var(--gold)"}){return<button onClick={onClick} style={{background:tint(color,9),border:`1px solid ${tint(color,31)}`,color,borderRadius:8,padding:"8px 14px",minHeight:38,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{children}</button>;}
+function SyncDot({connected}){return<div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:7,height:7,borderRadius:"50%",background:connected?"var(--gold)":"var(--red)",boxShadow:connected?"0 0 6px color-mix(in srgb, var(--gold) 50%, transparent)":"0 0 6px color-mix(in srgb, var(--red) 50%, transparent)"}}/><span style={{fontSize:10,color:"var(--muted)",fontFamily:"'Space Mono',monospace"}}>{connected?"LIVE":"LOCAL"}</span></div>;}
+function GroupBadge({group,bothGroups}){if(bothGroups)return<span style={{fontSize:11,fontWeight:700,color:"var(--amber)",background:"color-mix(in srgb, var(--amber) 9%, transparent)",padding:"2px 8px",borderRadius:4,border:"1px solid color-mix(in srgb, var(--amber) 19%, transparent)"}}>BOTH GROUPS</span>;const e=group==="even";return<span style={{fontSize:11,fontWeight:700,color:e?"var(--purple)":"var(--cyan)",background:e?"color-mix(in srgb, var(--purple) 9%, transparent)":"color-mix(in srgb, var(--cyan) 9%, transparent)",padding:"2px 8px",borderRadius:4,border:`1px solid ${e?"color-mix(in srgb, var(--purple) 19%, transparent)":"color-mix(in srgb, var(--cyan) 19%, transparent)"}`}}>{e?"EVEN PINS":"ODD PINS"}</span>;}
 function DiffBadge({d}){const c=DIFF_COLORS[d]||DIFF_COLORS.easy;return<span style={{fontSize:10,fontWeight:700,color:c.color,background:c.bg,padding:"1px 7px",borderRadius:4,border:`1px solid ${c.border}`}}>{d==="easy"?"1 PT":"2 PTS"}</span>;}
 
 
-const HOUSE_TABS=[{key:"me",label:"My jobs",icon:"✓"},{key:"house",label:"House",icon:"⌂"},{key:"woth",label:"WOTH Day",icon:"⌂"},{key:"projects",label:"Projects",icon:"+"},{key:"issues",label:"Report",icon:"!"},{key:"manager",label:"Manager",icon:"⚙"}];
+const HOUSE_TABS=[{key:"me",label:"My jobs",icon:"check"},{key:"house",label:"House",icon:"home"},{key:"woth",label:"WOTH",icon:"hammer"},{key:"projects",label:"Projects",icon:"star"},{key:"issues",label:"Report",icon:"alert"},{key:"manager",label:"Manager",icon:"gear"}];
+// Simple line icons for the tab bar (24×24, stroke = currentColor).
+const NAV_ICON_PATHS={
+  check:"M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9",
+  home:"M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z",
+  hammer:"M14 4l6 6-3 3-6-6zM11 7l-8 8a2.1 2.1 0 0 0 3 3l8-8",
+  star:"M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z",
+  alert:"M12 3 2 20h20zM12 10v4M12 17.5v.01",
+  gear:"M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z",
+};
+function NavIcon({name}){return<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={NAV_ICON_PATHS[name]}/></svg>;}
+// House sub-pages get a "‹ House" back link.
+const HOUSE_SUBVIEWS=["dashboard","sunday","roster","leaderboard","requests","supplies","maintenance","emergency"];
 const TASK_LABELS={pending:"To do",claimed:"In progress",done:"In review",verified:"Verified",missed:"Missed",excused:"Excused"};
 
 function TaskFocus({tasks,name,week,onComplete,onProjects}){
@@ -437,6 +451,7 @@ export default function HouseJobsApp(){
   const[adminLoading,setAdminLoading]=useState(false);
   const[pwInput,setPwInput]=useState("");
   const[pwError,setPwError]=useState(false);
+  const[nameQuery,setNameQuery]=useState(""); // My jobs name search (kept separate from the manager password)
   const[editName,setEditName]=useState("");
   const[editFloor,setEditFloor]=useState("first");
   const[editJobName,setEditJobName]=useState("");
@@ -474,26 +489,36 @@ export default function HouseJobsApp(){
   const skipProjSync=useRef(false);
   const weeksRef=useRef(DEFAULT_WEEKS);
   useEffect(()=>{weeksRef.current=weeks;},[weeks]);
+  // Each screen opens at the top instead of wherever the last one was scrolled to.
+  useEffect(()=>{try{window.scrollTo({top:0});}catch{}},[view,selectedBrother]);
 
   // Auto-detect current week based on today's date
+  // Week labels have no year. Handles weeks that cross New Year (12/29-1/4), and after the last
+  // listed week, or during an unlisted break week, stays on the most recent week instead of jumping to week 1.
   function detectCurrentWeek(weeksList){
     const today=new Date();
-    const year=today.getFullYear();
-    for(let i=0;i<weeksList.length;i++){
-      const parts=weeksList[i].split("-");
-      if(parts.length!==2)continue;
-      const parseDate=(s)=>{const p=s.trim().split("/");if(p.length!==2)return null;return new Date(year,parseInt(p[0])-1,parseInt(p[1]));};
-      const start=parseDate(parts[0]);
-      const end=parseDate(parts[1]);
-      if(!start||!end)continue;
+    const range=(label,year)=>{
+      const parts=String(label).split("-");if(parts.length!==2)return null;
+      const parseDate=(s,y)=>{const p=s.trim().split("/");if(p.length!==2)return null;const d=new Date(y,parseInt(p[0])-1,parseInt(p[1]));return Number.isNaN(d.getTime())?null:d;};
+      const start=parseDate(parts[0],year);let end=parseDate(parts[1],year);
+      if(!start||!end)return null;
+      if(end<start)end=parseDate(parts[1],year+1);
       end.setHours(23,59,59);
-      if(today>=start&&today<=end) return i;
+      return[start,end];
+    };
+    let lastPast=-1;
+    for(let i=0;i<weeksList.length;i++){
+      for(const y of [today.getFullYear(),today.getFullYear()-1]){
+        const r=range(weeksList[i],y);if(!r)continue;
+        if(today>=r[0]&&today<=r[1])return i;
+        if(y===today.getFullYear()&&r[1]<today)lastPast=i;
+      }
     }
-    return 0;
+    return lastPast>=0?lastPast:0;
   }
 
   // ─── INIT ───
-  useEffect(()=>{(async()=>{
+  useEffect(()=>{(async()=>{try{
     const connected=await initFirebase(); setFbConnected(connected);
     if(connected){
       const initialUser=auth.currentUser;
@@ -508,11 +533,11 @@ export default function HouseJobsApp(){
       const w=cfg?.weeks||DEFAULT_WEEKS;
       weeksRef.current=w;
       if(cfg){setBrothers(cfg.brothers||DEFAULT_BROTHERS);setJobs(cfg.jobs||DEFAULT_JOBS);setWeeks(w);setSemesterName(cfg.semesterName||"Fall 2026");setChairs(cfg.chairs||{});setLocks(cfg.locks||[]);}
-      if(asg)setAssignments(desanitizeObjKeys(asg,w));else{const a=generateAssignments(cfg?.brothers||DEFAULT_BROTHERS,cfg?.jobs||DEFAULT_JOBS,w,cfg?.chairs,cfg?.locks);setAssignments(a);await fbSet("assignments",sanitizeObjKeys(a));}
+      if(asg)setAssignments(desanitizeObjKeys(asg,w));else{const a=generateAssignments(cfg?.brothers||DEFAULT_BROTHERS,cfg?.jobs||DEFAULT_JOBS,w,cfg?.chairs,cfg?.locks);setAssignments(a);await fbSet("assignments",sanitizeObjKeys(a)).catch(e=>console.error("Could not save first weekly schedule:",e));}
       if(sunCfg){setEvenPins(sunCfg.evenPins||DEFAULT_EVEN_PINS);setOddPins(sunCfg.oddPins||DEFAULT_ODD_PINS);setSundayJobs(sunCfg.sundayJobs||DEFAULT_SUNDAY_JOBS);}
-      if(sunAsg)setSundayAssignments(desanitizeObjKeys(sunAsg,w));else{const sa=generateSundayAssignments(sunCfg?.evenPins||DEFAULT_EVEN_PINS,sunCfg?.oddPins||DEFAULT_ODD_PINS,sunCfg?.sundayJobs||DEFAULT_SUNDAY_JOBS,w);setSundayAssignments(sa);await fbSet("sundayAssignments",sanitizeObjKeys(sa));}
+      if(sunAsg)setSundayAssignments(desanitizeObjKeys(sunAsg,w));else{const sa=generateSundayAssignments(sunCfg?.evenPins||DEFAULT_EVEN_PINS,sunCfg?.oddPins||DEFAULT_ODD_PINS,sunCfg?.sundayJobs||DEFAULT_SUNDAY_JOBS,w);setSundayAssignments(sa);await fbSet("sundayAssignments",sanitizeObjKeys(sa)).catch(e=>console.error("Could not save first Sunday schedule:",e));}
       if(projCfg)setProjects(projCfg);
-      if(projAsg)setWeeklyProjects(desanitizeObjKeys(projAsg,w));else{const wp=generateWeeklyProjects(projCfg||DEFAULT_PROJECTS,w);setWeeklyProjects(wp);await fbSet("weeklyProjects",sanitizeObjKeys(wp));}
+      if(projAsg)setWeeklyProjects(desanitizeObjKeys(projAsg,w));else{const wp=generateWeeklyProjects(projCfg||DEFAULT_PROJECTS,w);setWeeklyProjects(wp);await fbSet("weeklyProjects",sanitizeObjKeys(wp)).catch(e=>console.error("Could not save first project schedule:",e));}
       if(ann)setAnnouncements(Array.isArray(ann)?ann:[]);
       if(settings)setHouseSettings({...DEFAULT_HOUSE_SETTINGS,...settings});
       if(issues)setHouseIssues(Array.isArray(issues)?issues:Object.values(issues));
@@ -548,7 +573,9 @@ export default function HouseJobsApp(){
         setCurrentWeekIdx(detectCurrentWeek(cfg?.value?(JSON.parse(cfg.value).weeks||DEFAULT_WEEKS):DEFAULT_WEEKS));
       }catch{setAssignments(generateAssignments(DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_WEEKS));setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS));setWeeklyProjects(generateWeeklyProjects(DEFAULT_PROJECTS,DEFAULT_WEEKS));}
     }
-    setLoading(false);
+    // A failed read must never leave the app stuck on "Connecting...".
+    }catch(e){console.error("Loading house data failed:",e);setPersistenceNotice({type:"error",message:"Some house data could not be loaded. Refresh to try again."});}
+    finally{setLoading(false);}
   })();},[]);
 
   // ─── SAVE ───
@@ -723,7 +750,9 @@ export default function HouseJobsApp(){
       setCompletionDraft(null);
     }catch(e){console.error("Completion submission failed:",e);setCompletionError(completionErrorText(e));}finally{setCompletionBusy(false);}
   }
-  async function reviewItem(item,approved){
+  // Wrapped in persist so a failed save shows an error instead of failing silently.
+  function reviewItem(item,approved){return persist(approved?"Verification":"Rejection",()=>applyReview(item,approved));}
+  async function applyReview(item,approved){
     if(item.type==="weekly"){
       const u=JSON.parse(JSON.stringify(assignments)),entry=u[item.week]?.[item.id];if(!entry)return;
       u[item.week][item.id]={...entry,status:approved?"verified":"pending",rejectionNote:approved?"":"Needs more work"};
@@ -742,7 +771,7 @@ export default function HouseJobsApp(){
     setArchiveBusy(true);
     try{
       const id=String(Date.now());
-      const snapshot={id,name:semesterName,archivedAt:new Date().toISOString(),config:{brothers,jobs,weeks,semesterName},sundayConfig:{evenPins,oddPins,sundayJobs},projectsConfig:projects,houseSettings,announcements,assignments,sundayAssignments,weeklyProjects,houseIssues,houseOps:ops.data};
+      const snapshot={id,name:semesterName,archivedAt:new Date().toISOString(),config:{brothers,jobs,weeks,semesterName,chairs,locks},sundayConfig:{evenPins,oddPins,sundayJobs},projectsConfig:projects,houseSettings,announcements,assignments,sundayAssignments,weeklyProjects,houseIssues,houseOps:ops.data};
       const saved=await persist("Semester archive",async()=>{if(fbConnected)await fbSet(`archives/${id}`,snapshot);else await localStoreSet("housejobs:archives",JSON.stringify({...archives,[id]:snapshot}));});
       if(saved)setArchives(prev=>({...prev,[id]:snapshot}));
     }finally{setArchiveBusy(false);}
@@ -897,7 +926,8 @@ export default function HouseJobsApp(){
 
   // Project actions
   async function claimProject(week,projIdx,name){
-    if(!name?.trim()||!fbConnected){
+    if(!name?.trim())return;
+    if(!fbConnected){
       const u=JSON.parse(JSON.stringify(weeklyProjects));
       if(u[week]?.projects?.[projIdx]?.status==="available"){
         u[week].projects[projIdx]={...u[week].projects[projIdx],status:"claimed",claimedBy:name,claimedUid:authUser?.uid||"local"};
@@ -964,13 +994,16 @@ export default function HouseJobsApp(){
       console.error("Regenerate error:",e);
       setPersistenceNotice({type:"error",message:e.message||"The schedules were not regenerated."});
     }
-    setConfirmRegen(false);setCurrentWeekIdx(0);setView("dashboard");setSaving(false);
+    setConfirmRegen(false);setCurrentWeekIdx(detectCurrentWeek(weeks));setView("dashboard");setSaving(false);
   }
 
   // ─── STATS ───
   const brotherNames=useMemo(()=>getBrotherNames(brothers),[brothers]);
   const operationsNames=[...new Set([...brotherNames,...evenPins,...oddPins])].sort();
-  const stats=useMemo(()=>{const s={};brotherNames.forEach(b=>{s[b]={total:0,done:0,missed:0,verified:0,pending:0};});Object.values(assignments).forEach(wj=>{if(!wj||typeof wj!=="object")return;Object.values(wj).forEach(e=>{if(!e?.assigned)return;if(e.status==="excused")return;e.assigned.forEach(b=>{if(s[b]){s[b].total++;s[b][e.status]=(s[b][e.status]||0)+1;}});});});return s;},[assignments,brotherNames]);
+  // Stats only count weeks up to the real current week; future weeks are planned, not owed yet.
+  const todayWeekIdx=useMemo(()=>detectCurrentWeek(weeks),[weeks]);
+  const weeksSoFar=useMemo(()=>weeks.slice(0,todayWeekIdx+1),[weeks,todayWeekIdx]);
+  const stats=useMemo(()=>{const s={};brotherNames.forEach(b=>{s[b]={total:0,done:0,missed:0,verified:0,pending:0};});weeksSoFar.map(w=>assignments[w]).forEach(wj=>{if(!wj||typeof wj!=="object")return;Object.values(wj).forEach(e=>{if(!e?.assigned)return;if(e.status==="excused")return;e.assigned.forEach(b=>{if(s[b]){s[b].total++;s[b][e.status]=(s[b][e.status]||0)+1;}});});});return s;},[assignments,brotherNames,weeksSoFar]);
 
   const projectStats=useMemo(()=>{
     const s={};
@@ -1000,10 +1033,12 @@ export default function HouseJobsApp(){
     const rank={urgent:4,high:3,medium:2,low:1};
     return houseIssues.filter(x=>x.status!=="closed").sort((a,b)=>(rank[b.priority]||0)-(rank[a.priority]||0)||String(b.createdAt).localeCompare(String(a.createdAt)));
   },[houseIssues]);
+  // Sunday job names, including that week's temp jobs.
+  const sunJobName=(data,id)=>[...sundayJobs,...(data?.tempJobs||[])].find(j=>j.id===id)?.name||id;
   const overdueItems=useMemo(()=>{
     const now=Date.now(),list=[];
     Object.entries(assignments).forEach(([week,data])=>{const due=getDueDate(week,"weekly",houseSettings);if(due&&due.getTime()<now)Object.entries(data||{}).forEach(([id,entry])=>{if(entry?.status==="pending"&&entry.assigned?.length)list.push({type:"weekly",week,id,name:jobs.find(j=>j.id===id)?.name||id,assigned:entry.assigned||[],due});});});
-    Object.entries(sundayAssignments).forEach(([week,data])=>{const due=getDueDate(week,"sunday",houseSettings);if(due&&due.getTime()<now)Object.entries(data?.jobs||{}).forEach(([id,entry])=>{if(entry?.status==="pending"&&entry.assigned?.length)list.push({type:"sunday",week,id,name:sundayJobs.find(j=>j.id===id)?.name||id,assigned:entry.assigned||[],due});});});
+    Object.entries(sundayAssignments).forEach(([week,data])=>{const due=getDueDate(week,"sunday",houseSettings);if(due&&due.getTime()<now)Object.entries(data?.jobs||{}).forEach(([id,entry])=>{if(entry?.status==="pending"&&entry.assigned?.length)list.push({type:"sunday",week,id,name:sunJobName(data,id),assigned:entry.assigned||[],due});});});
     return list.sort((a,b)=>a.due-b.due);
   },[assignments,sundayAssignments,jobs,sundayJobs,houseSettings]);
   // Clears the unfinished backlog from weeks before the current one. Uses a neutral "excused" status so it
@@ -1023,9 +1058,9 @@ export default function HouseJobsApp(){
   const kitchenStats=useMemo(()=>{
     const all=[...new Set([...evenPins,...oddPins])],counts={};
     all.forEach(n=>{counts[n]=0;});
-    Object.values(sundayAssignments).forEach(w=>{(w?.jobs?.sun_kitchen?.assigned||[]).forEach(n=>{counts[n]=(counts[n]||0)+1;});});
+    weeksSoFar.forEach(wk=>{(sundayAssignments[wk]?.jobs?.[KITCHEN_ID]?.assigned||[]).forEach(n=>{counts[n]=(counts[n]||0)+1;});});
     return{all,counts,served:all.filter(n=>(counts[n]||0)>0),waiting:all.filter(n=>(counts[n]||0)===0)};
-  },[evenPins,oddPins,sundayAssignments]);
+  },[evenPins,oddPins,sundayAssignments,weeksSoFar]);
   const fairnessRows=useMemo(()=>brotherNames.map(name=>{
     let sunday=0,kitchen=0,bathrooms=0;
     Object.values(sundayAssignments).forEach(w=>Object.entries(w?.jobs||{}).forEach(([id,e])=>{if(e?.assigned?.includes(name)){sunday++;if(id==="sun_kitchen")kitchen++;if(id.includes("bath"))bathrooms++;}}));
@@ -1040,12 +1075,12 @@ export default function HouseJobsApp(){
   ];
   const legacySupplies=[
     ...Object.entries(assignments).flatMap(([week,data])=>Object.entries(data||{}).map(([id,entry])=>({type:"weekly",week,id,entry,title:jobs.find(j=>j.id===id)?.name||id}))),
-    ...Object.entries(sundayAssignments).flatMap(([week,data])=>Object.entries(data?.jobs||{}).map(([id,entry])=>({type:"sunday",week,id,entry,title:sundayJobs.find(j=>j.id===id)?.name||id}))),
+    ...Object.entries(sundayAssignments).flatMap(([week,data])=>Object.entries(data?.jobs||{}).map(([id,entry])=>({type:"sunday",week,id,entry,title:sunJobName(data,id)}))),
     ...Object.entries(weeklyProjects).flatMap(([week,data])=>(data.projects||[]).map(entry=>({type:"project",week,id:entry.id,entry,title:entry.name})))
   ].filter(r=>r.entry?.proof?.supplyStatus&&r.entry.proof.supplyStatus!=="ok").map(r=>({id:keyOf(r.type+"|"+r.week+"|"+r.id+"|"+r.entry.proof.submittedAt),item:r.entry.proof.supplyNote||"Supplies needed",location:r.title,severity:r.entry.proof.supplyStatus==="out"?"out":"low",status:"open",reporterUid:r.entry.proof.submittedUid||"legacy",reporterName:r.entry.proof.submittedBy||"House member",createdAt:r.entry.proof.submittedAt||new Date().toISOString()}));
   const recentActivity=[
     ...Object.entries(assignments).flatMap(([week,data])=>Object.entries(data||{}).map(([id,entry])=>({week,name:jobs.find(j=>j.id===id)?.name||id,entry}))),
-    ...Object.entries(sundayAssignments).flatMap(([week,data])=>Object.entries(data?.jobs||{}).map(([id,entry])=>({week,name:sundayJobs.find(j=>j.id===id)?.name||id,entry}))),
+    ...Object.entries(sundayAssignments).flatMap(([week,data])=>Object.entries(data?.jobs||{}).map(([id,entry])=>({week,name:sunJobName(data,id),entry}))),
     ...Object.entries(weeklyProjects).flatMap(([week,data])=>(data.projects||[]).map(entry=>({week,name:entry.name,entry})))
   ].filter(t=>t.entry?.proof?.submittedAt&&["done","verified"].includes(t.entry.status)).sort((a,b)=>String(b.entry.proof.submittedAt).localeCompare(String(a.entry.proof.submittedAt))).slice(0,8);
   async function copyManagerBrief(){
@@ -1053,22 +1088,22 @@ export default function HouseJobsApp(){
     try{await navigator.clipboard.writeText(text);setBriefNotice("Brief copied. Review it before sharing.");}catch{setBriefNotice("Clipboard unavailable. Try your normal browser.");}
   }
 
-  if(loading)return<div style={{fontFamily:"'DM Sans',sans-serif",background:"#10131C",color:"#A8B4CB",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}><div style={{width:28,height:28,border:"3px solid #364258",borderTop:"3px solid #D4A843",borderRadius:"50%",animation:"spin .8s linear infinite"}}/><span>Connecting...</span><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
+  if(loading)return<div style={{fontFamily:"'DM Sans',sans-serif",background:"var(--bg)",color:"var(--muted)",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}><div style={{width:28,height:28,border:"3px solid var(--line)",borderTop:"3px solid var(--gold)",borderRadius:"50%",animation:"spin .8s linear infinite"}}/><span>Connecting...</span><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>;
 
   return(
-    <div className="app-shell" style={{fontFamily:"'DM Sans','Segoe UI',sans-serif",background:"#10131C",color:"#E2E8F0",minHeight:"100vh",margin:"0 auto"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#364258;border-radius:4px}@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes spin{to{transform:rotate(360deg)}}.fu{animation:fadeUp .3s ease both}.ch{transition:transform .15s,box-shadow .15s}.ch:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.3)}select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+    <div className="app-shell" style={{fontFamily:"'DM Sans','Segoe UI',sans-serif",background:"var(--bg)",color:"var(--ink)",minHeight:"100vh",margin:"0 auto"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap');:root{color-scheme:light;--bg:#F6F4EF;--card:#FFFFFF;--field:#F1EEE7;--line:#E4DFD4;--line-strong:#CDC6B8;--ink:#1D222C;--ink-2:#3B4250;--muted:#656C79;--gold:#9C7410;--gold-deep:#7A5A0A;--gold-bg:#F6EBCF;--on-gold:#FFFFFF;--amber:#B45309;--amber-deep:#92400E;--red:#C0262D;--red-bg:#FDECEC;--purple:#6D3FD8;--purple-bg:#EEE7FD;--blue:#1F5FCC;--cyan:#0E7490;--pink:#BE2368;--orange:#C2410C;--green:#15803D;--green-bg:#DCF3E6;--shadow:0 1px 2px rgba(29,34,44,.06),0 4px 14px rgba(29,34,44,.06)}*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes spin{to{transform:rotate(360deg)}}.fu{animation:fadeUp .3s ease both}.ch{transition:transform .15s,box-shadow .15s}.ch:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.3)}select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
 .app-shell{max-width:520px}
 .job-grid{display:flex;flex-direction:column;gap:8px}
 .roster-grid{display:flex;flex-direction:column;gap:6px}
 .board-list{display:flex;flex-direction:column;gap:6px}
 .manager-grid,.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.hm-card{background:#1C2332;border:1px solid #364258;border-radius:12px;padding:14px;min-width:0}
+.hm-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}
 .scroll-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x proximity}
 .scroll-row>*{scroll-snap-align:start}
 .nav-tab{min-width:64px!important}
 .proof-modal{position:fixed;inset:0;z-index:200;background:#080512CC;display:flex;align-items:flex-end;justify-content:center;padding:14px}
-.proof-sheet{width:min(100%,500px);max-height:92vh;overflow-y:auto;background:#1C2332;border:1px solid #D4A84355;border-radius:18px 18px 12px 12px;padding:18px;box-shadow:0 -16px 45px #0008}
+.proof-sheet{width:min(100%,500px);max-height:92vh;overflow-y:auto;background:var(--card);border:1px solid color-mix(in srgb, var(--gold) 33%, transparent);border-radius:18px 18px 12px 12px;padding:18px;box-shadow:0 -16px 45px #0008}
 .header-inner{max-width:100%}
 @media(max-width:767px){
   .app-shell{padding-bottom:24px}
@@ -1095,88 +1130,114 @@ export default function HouseJobsApp(){
 
 
       <style>{`
-body{background:#10131c}
-.app-shell{background:#10131c!important;color:#edf0f7!important;max-width:1120px}
+body{background:var(--bg)}
+.app-shell{background:var(--bg)!important;color:var(--ink)!important;max-width:1120px}
 .app-shell button,.app-shell input,.app-shell textarea,.app-shell select{font-family:inherit}
 .app-shell button{touch-action:manipulation}
-.app-shell button:focus-visible,.app-shell input:focus-visible,.app-shell summary:focus-visible{outline:3px solid #e6bd65;outline-offset:3px}
+.app-shell button:focus-visible,.app-shell input:focus-visible,.app-shell summary:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
 .app-shell button:disabled{opacity:.5;cursor:wait}
-.primary-nav{display:flex;gap:8px;padding:12px 20px;background:#10131c;border-bottom:1px solid #303748}
-.primary-nav button{position:relative;flex:1;min-height:54px;border:1px solid transparent;border-radius:12px;background:transparent;color:#aeb9cf;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:9px}
-.primary-nav button[aria-current]{background:#e6bd65;color:#191714}
-.primary-nav button>span{font-size:20px}
-.primary-nav small{background:#a82240;color:white;border-radius:20px;padding:2px 5px}
-.focus-hero{border:1px solid #485062;background:radial-gradient(ellipse at top right,#51402d,transparent 65%),#1b2130;border-radius:22px;padding:26px;margin-bottom:20px}
-.eyebrow{font-size:10px;letter-spacing:.14em;color:#e6bd65;font-weight:800}
+.app-header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--card) 94%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:calc(12px + env(safe-area-inset-top)) 20px 12px}
+.hdr-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.brand{display:flex;align-items:center;gap:10px}.brand h1{font-family:'Space Mono',monospace;font-size:19px;font-weight:700;color:var(--gold);letter-spacing:-.02em;white-space:nowrap}
+.hdr-meta{font-size:12px;color:var(--muted);margin-top:2px}
+.ring{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;flex-shrink:0}.ring span{width:38px;height:38px;border-radius:50%;background:var(--card);display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--gold-deep)}
+.week-nav{display:grid;grid-template-columns:44px 1fr 44px;gap:8px}
+.week-nav button{height:44px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);font-size:22px;line-height:1;cursor:pointer}
+.week-nav button:disabled{opacity:.35;cursor:default}
+.week-nav .week-label{background:var(--field);border-color:transparent;font-size:15px;font-weight:700;color:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+.week-label small{font-size:10px;font-weight:600;color:var(--muted);letter-spacing:.02em}
+.primary-nav{display:flex;gap:6px;padding:10px 20px;background:var(--bg);border-bottom:1px solid var(--line)}
+.primary-nav button{position:relative;flex:1;min-height:48px;border:0;border-radius:12px;background:transparent;color:var(--muted);cursor:pointer;font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px}
+.primary-nav button[aria-current]{background:var(--gold-bg);color:var(--gold-deep)}
+.nav-ico{display:grid;place-items:center}
+.primary-nav small{background:#a82240;color:white;border-radius:20px;padding:2px 6px;font-size:10px;font-weight:800}
+.content{padding:16px 20px calc(96px + env(safe-area-inset-bottom));display:block}
+.page-title{font-size:24px;font-weight:800;letter-spacing:-.03em;color:var(--ink);margin:2px 0 14px}
+.back-link{background:none;border:0;color:var(--gold-deep);font-weight:700;font-size:14px;padding:6px 0;margin:-4px 0 8px;min-height:36px;cursor:pointer}
+.toast{position:sticky;top:132px;z-index:40;margin:10px 20px 0;padding:11px 14px;border-radius:12px;font-size:13px;line-height:1.4;display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--line);color:var(--ink-2);box-shadow:var(--shadow)}
+.toast.saved{background:var(--green-bg);border-color:transparent;color:var(--green)}
+.toast.error{background:var(--red-bg);border-color:color-mix(in srgb,var(--red) 30%,transparent);color:var(--red)}
+.toast button{background:none;border:0;color:inherit;font-size:20px;min-width:36px;min-height:36px;cursor:pointer}
+.job-grid>div,.roster-grid>div,.hm-card,.task-card,.house-links button{box-shadow:var(--shadow)}
+.focus-hero{border:1px solid var(--line-strong);background:radial-gradient(ellipse at top right,var(--gold-bg),transparent 65%),var(--card);border-radius:22px;padding:26px;margin-bottom:20px}
+.eyebrow{font-size:10px;letter-spacing:.14em;color:var(--gold);font-weight:800}
 .focus-hero h2{font-size:clamp(25px,5vw,36px);line-height:1.14;letter-spacing:-.04em;margin:12px 0}
-.focus-hero p,.manager-brief p{font-size:13px;line-height:1.6;color:#bac4d6}
-.progress-track{height:5px;background:#394051;border-radius:10px;margin:22px 0;overflow:hidden}
-.progress-track>div{height:100%;background:#e6bd65}
+.focus-hero p,.manager-brief p{font-size:13px;line-height:1.6;color:var(--muted)}
+.progress-track{height:5px;background:var(--line);border-radius:10px;margin:22px 0;overflow:hidden}
+.progress-track>div{height:100%;background:var(--gold)}
 .focus-actions{display:flex;gap:10px;flex-wrap:wrap}
-.focus-actions button,.manager-brief button{background:#272e3e;color:#f4e5c4;border:1px solid #566079;border-radius:10px;padding:11px 16px;cursor:pointer;min-height:44px}
-.task-toolbar input{width:100%;background:#191f2c;color:#f2f5fc;border:1px solid #404b61;border-radius:12px;padding:14px;font-size:16px;margin-bottom:12px}
+.focus-actions button,.manager-brief button{background:var(--field);color:var(--ink);border:1px solid var(--line-strong);border-radius:10px;padding:11px 16px;cursor:pointer;min-height:44px}
+.task-toolbar input{width:100%;background:var(--field);color:var(--ink);border:1px solid var(--line-strong);border-radius:12px;padding:14px;font-size:16px;margin-bottom:12px}
 .filter-pills{display:flex;gap:6px;overflow:auto;margin:10px 0 18px;padding-bottom:3px}
-.filter-pills button{white-space:nowrap;border:1px solid #485066;background:#1a2030;color:#bbc6dd;border-radius:30px;min-height:44px;padding:10px 15px;cursor:pointer}
-.filter-pills button[aria-pressed=true]{background:#eee5d2;color:#241f19;border-color:#eee5d2}
-.task-card{background:#1b2130;border:1px solid #394357;border-radius:16px;padding:20px;margin-bottom:12px}
+.filter-pills button{white-space:nowrap;border:1px solid var(--line-strong);background:var(--card);color:var(--muted);border-radius:30px;min-height:44px;padding:10px 15px;cursor:pointer}
+.filter-pills button[aria-pressed=true]{background:var(--ink);color:var(--card);border-color:var(--ink)}
+.task-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:12px}
 .task-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .task-card h3{font-size:20px;letter-spacing:-.02em;margin:14px 0 8px}
-.task-status{font-size:11px;padding:5px 8px;background:#30394c;color:#c8d4ef;border-radius:6px;white-space:nowrap}
-.task-status.verified{background:#183c35;color:#9ae4bf}.task-status.done{background:#3d3454;color:#dfc9ff}
-.quiet{color:#a6b3cb;font-size:12px;line-height:1.6;margin:6px 0}
-.late,.return-note{color:#ffb0ad;font-size:12px;line-height:1.5}
-.return-note{background:#4a252e;padding:10px;border-radius:8px;margin:10px 0}
-.task-card details{margin:14px 0;border-top:1px solid #364054;padding-top:12px}
-.task-card summary{cursor:pointer;font-size:13px;color:#e4c888;min-height:36px}
-.check-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;color:#dae1ef;font-size:14px;line-height:1.5}
-.check-row input{width:21px;height:21px;flex-shrink:0;accent-color:#e6bd65}
-.primary-action{width:100%;border:0;background:#e6bd65;color:#211b12;border-radius:10px;padding:14px;font-weight:800;cursor:pointer;margin-top:14px;min-height:48px}
-.empty-card{border:1px dashed #48546a;border-radius:16px;padding:24px;text-align:center;color:#b8c3d8;font-size:14px;line-height:1.6;margin-bottom:16px}
+.task-status{font-size:11px;padding:5px 8px;background:var(--field);color:var(--ink-2);border-radius:6px;white-space:nowrap}
+.task-status.verified{background:var(--green-bg);color:var(--green)}.task-status.done{background:var(--purple-bg);color:var(--purple)}
+.quiet{color:var(--muted);font-size:12px;line-height:1.6;margin:6px 0}
+.late,.return-note{color:var(--red);font-size:12px;line-height:1.5}
+.return-note{background:var(--red-bg);padding:10px;border-radius:8px;margin:10px 0}
+.task-card details{margin:14px 0;border-top:1px solid var(--line);padding-top:12px}
+.task-card summary{cursor:pointer;font-size:13px;color:var(--gold);min-height:36px}
+.check-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;color:var(--ink);font-size:14px;line-height:1.5}
+.check-row input{width:21px;height:21px;flex-shrink:0;accent-color:var(--gold)}
+.primary-action{width:100%;border:0;background:var(--gold);color:var(--on-gold);border-radius:10px;padding:14px;font-weight:800;cursor:pointer;margin-top:14px;min-height:48px}
+.empty-card{border:1px dashed var(--line-strong);border-radius:16px;padding:24px;text-align:center;color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:16px}
 .house-links{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.house-links button{background:#1c2332;border:1px solid #3c465c;border-radius:14px;text-align:left;padding:22px;color:#f0e5d3;cursor:pointer;min-width:0}
-.house-links strong{display:block;font-size:16px}.house-links span{display:block;color:#acb9d1;font-size:12px;margin-top:8px;line-height:1.5}
-.section-title{font-size:12px;letter-spacing:.09em;color:#c1cce0;margin:22px 0 12px}
-.activity-row{display:flex;gap:12px;align-items:center;border-bottom:1px solid #30394c;padding:15px 0;font-size:14px}
-.activity-row p{font-size:12px;color:#a5b2ca;margin-top:5px;line-height:1.5}.activity-dot{width:7px;height:7px;border-radius:50%;background:#e6bd65;flex-shrink:0}
-.manager-brief{background:#222a3b;border:1px solid #58627b;border-radius:16px;padding:22px;margin:16px 0}.manager-brief h3{font-size:23px;letter-spacing:-.03em;margin:8px 0}.manager-brief button{margin-top:12px}
-.hm-card{background:#1c2332!important;border-color:#39445b!important}
+.house-links button{background:var(--card);border:1px solid var(--line);border-radius:14px;text-align:left;padding:22px;color:var(--ink);cursor:pointer;min-width:0;display:flex;flex-direction:column;justify-content:flex-start}
+.house-links strong{display:block;font-size:16px}.house-links span{display:block;color:var(--muted);font-size:12px;margin-top:8px;line-height:1.5}
+.section-title{font-size:12px;letter-spacing:.09em;color:var(--muted);margin:22px 0 12px}
+.activity-row{display:flex;gap:12px;align-items:center;border-bottom:1px solid var(--field);padding:15px 0;font-size:14px}
+.activity-row p{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}.activity-dot{width:7px;height:7px;border-radius:50%;background:var(--gold);flex-shrink:0}
+.manager-brief{background:var(--card);border:1px solid var(--line-strong);border-radius:16px;padding:22px;margin:16px 0}.manager-brief h3{font-size:23px;letter-spacing:-.03em;margin:8px 0}.manager-brief button{margin-top:12px}
+.hm-card{background:var(--card)!important;border-color:var(--line)!important}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-@media(min-width:768px){.focus-workspace{max-width:760px;margin:auto}.app-shell{padding:0 24px}.primary-nav{position:sticky;top:155px;z-index:45}}
+@media(min-width:768px){.focus-workspace{max-width:760px;margin:auto}.app-shell{padding:0 24px}.primary-nav{position:sticky;top:129px;z-index:45}.toast{top:200px}.content{padding-bottom:60px}}
 @media(max-width:767px){
-.primary-nav{position:fixed;bottom:0;left:0;right:0;z-index:100;padding:7px 5px calc(7px + env(safe-area-inset-bottom));gap:2px;border:1px solid #354158;box-shadow:0 -8px 30px #0005}
-.primary-nav button{flex-direction:column;gap:3px;font-size:10px;min-height:54px;padding:5px 2px}
-.primary-nav small{position:absolute;right:7px;top:2px;font-size:9px}
-.house-links{grid-template-columns:1fr}.focus-hero{padding:22px}.task-card{padding:17px}
-.app-shell{padding-bottom:env(safe-area-inset-bottom)}.task-top .eyebrow{letter-spacing:.06em}
+.app-header{padding:calc(10px + env(safe-area-inset-top)) 16px 10px}.hdr-row{margin-bottom:10px}
+.primary-nav{position:fixed;bottom:0;left:0;right:0;z-index:100;padding:6px 6px calc(6px + env(safe-area-inset-bottom));gap:2px;background:color-mix(in srgb,var(--card) 96%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:0;border-top:1px solid var(--line)}
+.primary-nav button{flex-direction:column;gap:2px;font-size:10.5px;min-height:52px;padding:4px 2px;border-radius:10px}
+.primary-nav button[aria-current]{background:transparent}
+.primary-nav button .nav-ico{width:48px;height:28px;border-radius:14px}
+.primary-nav button[aria-current] .nav-ico{background:var(--gold-bg)}
+.primary-nav small{position:absolute;right:calc(50% - 22px);top:0;font-size:9px}
+.content{padding:14px 16px calc(84px + env(safe-area-inset-bottom))}
+.toast{position:fixed;left:12px;right:12px;top:auto;bottom:calc(72px + env(safe-area-inset-bottom));margin:0;z-index:110}
+.house-links{grid-template-columns:1fr 1fr;gap:10px}.house-links button{padding:16px 14px}.house-links strong{font-size:15px}
+.focus-hero{padding:20px;border-radius:18px}.focus-hero h2{font-size:24px}.task-card{padding:17px}
+.task-top .eyebrow{letter-spacing:.06em}
 }
 @media(prefers-reduced-motion:reduce){.fu{animation:none!important}*{scroll-behavior:auto!important}}
 `}</style>
 
-      {/* HEADER */}
-      <div style={{background:"linear-gradient(135deg,#1C2332,#151C2A)",borderBottom:"1px solid #D4A84330",padding:"20px 20px 16px",position:"sticky",top:0,zIndex:50}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div>
-            <div style={{display:"flex",alignItems:"center",gap:10}}><h1 style={{fontFamily:"'Space Mono',monospace",fontSize:20,fontWeight:700,color:"#D4A843",letterSpacing:"-0.02em"}}>ΣΦΕ HOUSE</h1><SyncDot connected={fbConnected}/></div>
-            <p style={{fontSize:12,color:"#A0AEC3",marginTop:2,fontFamily:"'Space Mono',monospace"}}>{semesterName} • Week {currentWeekIdx+1}/{weeks.length}</p>
+      {/* HEADER — compact on phones: brand + progress ring, then the week switcher */}
+      <header className="app-header">
+        <div className="hdr-row">
+          <div style={{minWidth:0}}>
+            <div className="brand"><h1>ΣΦΕ House</h1><SyncDot connected={fbConnected}/></div>
+            <p className="hdr-meta">{semesterName} · Week {currentWeekIdx+1} of {weeks.length}</p>
           </div>
-          {!["setup","sunday_setup","project_setup"].includes(view)&&<div style={{width:52,height:52,borderRadius:"50%",background:`conic-gradient(#D4A843 ${completionPct*3.6}deg,#1C2332 ${completionPct*3.6}deg)`,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:42,height:42,borderRadius:"50%",background:"#161C29",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#D4A843",fontFamily:"'Space Mono',monospace"}}>{completionPct}%</div></div>}
+          {!["setup","sunday_setup","project_setup"].includes(view)&&<div className="ring" role="img" aria-label={`${completionPct}% of this week's jobs done`} style={{background:`conic-gradient(var(--gold) ${completionPct*3.6}deg,var(--line) ${completionPct*3.6}deg)`}}><span>{completionPct}%</span></div>}
         </div>
-        {!["setup","sunday_setup","project_setup"].includes(view)&&<div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={()=>setCurrentWeekIdx(Math.max(0,currentWeekIdx-1))} style={{background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:6,width:32,height:32,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
-          <div style={{flex:1,background:"#1C2332",border:"1px solid #364258",borderRadius:8,padding:"8px 14px",textAlign:"center",fontSize:14,fontWeight:600,color:"#CBD5E1",fontFamily:"'Space Mono',monospace"}}>{currentWeek}</div>
-          <button onClick={()=>setCurrentWeekIdx(Math.min(weeks.length-1,currentWeekIdx+1))} style={{background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:6,width:32,height:32,cursor:"pointer",fontSize:16,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+        {!["setup","sunday_setup","project_setup"].includes(view)&&<div className="week-nav">
+          <button aria-label="Previous week" disabled={currentWeekIdx===0} onClick={()=>setCurrentWeekIdx(Math.max(0,currentWeekIdx-1))}>‹</button>
+          <button className="week-label" onClick={()=>setCurrentWeekIdx(todayWeekIdx)} title="Jump to this week">{currentWeek}<small>{currentWeekIdx===todayWeekIdx?"This week":"Tap for this week"}</small></button>
+          <button aria-label="Next week" disabled={currentWeekIdx>=weeks.length-1} onClick={()=>setCurrentWeekIdx(Math.min(weeks.length-1,currentWeekIdx+1))}>›</button>
         </div>}
-      </div>
+      </header>
 
       <nav className="primary-nav" aria-label="Main navigation">
-        {HOUSE_TABS.map(tab=><button key={tab.key} aria-current={(view===tab.key||tab.key==="house"&&["dashboard","sunday","roster","leaderboard","requests","supplies","maintenance","emergency"].includes(view)||tab.key==="manager"&&["setup","sunday_setup","project_setup"].includes(view))?"page":undefined} onClick={()=>{setView(tab.key);setSelectedBrother(null);}}><span aria-hidden="true">{tab.icon}</span>{tab.label}{tab.key==="manager"&&adminUnlocked&&verificationQueue.length>0&&<small>{verificationQueue.length}</small>}</button>)}
+        {HOUSE_TABS.map(tab=><button key={tab.key} aria-current={(view===tab.key||tab.key==="house"&&HOUSE_SUBVIEWS.includes(view)||tab.key==="manager"&&["setup","sunday_setup","project_setup"].includes(view))?"page":undefined} onClick={()=>{setView(tab.key);setSelectedBrother(null);}}><span className="nav-ico"><NavIcon name={tab.icon}/></span>{tab.label}{tab.key==="manager"&&adminUnlocked&&verificationQueue.length>0&&<small>{verificationQueue.length}</small>}</button>)}
       </nav>
 
-      {persistenceNotice&&<div role={persistenceNotice.type==="error"?"alert":"status"} style={{margin:"10px 20px 0",padding:"9px 12px",borderRadius:8,fontSize:12,lineHeight:1.4,background:persistenceNotice.type==="error"?"#7F1D1D55":persistenceNotice.type==="saved"?"#163B3155":"#263247",border:`1px solid ${persistenceNotice.type==="error"?"#EF444477":persistenceNotice.type==="saved"?"#34D39966":"#64748B66"}`,color:persistenceNotice.type==="error"?"#FECACA":persistenceNotice.type==="saved"?"#A7F3D0":"#D7DEEA"}}>{persistenceNotice.message}</div>}
+      {persistenceNotice&&<div className={"toast "+persistenceNotice.type} role={persistenceNotice.type==="error"?"alert":"status"}>{persistenceNotice.message}{persistenceNotice.type==="error"&&<button aria-label="Dismiss" onClick={()=>setPersistenceNotice(null)}>×</button>}</div>}
 
-      <div style={{padding:"16px 20px 100px"}}>
+      <main className="content">
+        {HOUSE_SUBVIEWS.includes(view)&&<button className="back-link" onClick={()=>setView("house")}>‹ House</button>}
 
-        {view==="house"&&<section className="fu"><div className="focus-hero"><h2>House</h2></div><div className="house-links">{[["dashboard","Weekly schedule","Assignments and deadlines"],["sunday","Sunday cleaning","Teams and kitchen duty"],["roster","Brothers","Roster and assignments"],["leaderboard","House progress","Completion and semester stats"],["requests","Requests","Swaps and absences"],["supplies","Supplies","Report and restock"],["maintenance","Maintenance","Recurring house tasks"],["emergency","Emergency cleanings","Extra cleanings and assignments"]].map(([key,title,desc])=><button key={key} onClick={()=>setView(key)}><strong>{title} ↗</strong><span>{desc}</span></button>)}</div><h3 className="section-title">Recent submissions</h3>{recentActivity.length?recentActivity.map((t,i)=><div className="activity-row" key={i}><span className="activity-dot"/><div><strong>{t.name}</strong><p>{t.entry.proof?.submittedBy||t.entry.completedBy||"House member"} · {t.week} · {TASK_LABELS[t.entry.status]}</p></div></div>):<div className="empty-card">No recent submissions.</div>}</section>}
+        {view==="house"&&<section className="fu"><h2 className="page-title">House</h2><div className="house-links">{[["dashboard","Weekly schedule","Assignments and deadlines"],["sunday","Sunday cleaning","Teams and kitchen duty"],["roster","Brothers","Roster and assignments"],["leaderboard","House progress","Completion and semester stats"],["requests","Requests","Swaps and absences"],["supplies","Supplies","Report and restock"],["maintenance","Maintenance","Recurring house tasks"],["emergency","Emergency cleanings","Extra cleanings and assignments"]].map(([key,title,desc])=><button key={key} onClick={()=>setView(key)}><strong>{title}</strong><span>{desc}</span></button>)}</div><h3 className="section-title">Recent submissions</h3>{recentActivity.length?recentActivity.map((t,i)=><div className="activity-row" key={i}><span className="activity-dot"/><div><strong>{t.name}</strong><p>{t.entry.proof?.submittedBy||t.entry.completedBy||"House member"} · {t.week} · {TASK_LABELS[t.entry.status]}</p></div></div>):<div className="empty-card">No recent submissions.</div>}</section>}
         {/* ══════ MY VIEW ══════ */}
         {view==="requests"&&<Requests ops={ops} admin={adminUnlocked} name={myName} names={operationsNames} weeks={weeks} assignments={assignments} sundays={sundayAssignments} jobs={jobs} sundayJobs={sundayJobs}/>}
         {view==="supplies"&&<Supplies ops={ops} admin={adminUnlocked} name={myName} legacy={legacySupplies}/>}
@@ -1185,61 +1246,61 @@ body{background:#10131c}
         {view==="me"&&<div className="fu">
           {!myName?<div style={{maxWidth:340,margin:"30px auto",textAlign:"center"}}>
             <div style={{fontSize:32,marginBottom:16}}>👋</div>
-            <h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9",marginBottom:8}}>Select your name</h2>
-            <p style={{fontSize:13,color:"#A0AEC3",marginBottom:20,lineHeight:1.5}}>Search the chapter roster.</p>
+            <h2 style={{fontSize:18,fontWeight:700,color:"var(--ink)",marginBottom:8}}>Select your name</h2>
+            <p style={{fontSize:13,color:"var(--muted)",marginBottom:20,lineHeight:1.5}}>Search the chapter roster.</p>
             {(()=>{
               // Build full name list from all sources
               const allNamesSet=new Set([...brotherNames,...evenPins,...oddPins]);
               const allNamesList=[...allNamesSet].sort();
-              const query=pwInput.trim().toLowerCase();
+              const query=nameQuery.trim().toLowerCase();
               const filtered=query?allNamesList.filter(n=>n.toLowerCase().includes(query)):[];
               const exactMatch=allNamesList.find(n=>n.toLowerCase()===query);
               return<div style={{position:"relative"}}>
-                <Input value={pwInput} onChange={v=>setPwInput(v)} placeholder="Start typing your name..." style={{marginBottom:0,textAlign:"center"}}/>
-                {query&&!exactMatch&&filtered.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1C2332",border:"1px solid #364258",borderRadius:"0 0 8px 8px",maxHeight:200,overflowY:"auto",zIndex:10}}>
-                  {filtered.slice(0,8).map(name=><button key={name} onClick={()=>{setMyNameAndSave(name);setPwInput("");}} style={{display:"block",width:"100%",padding:"10px 14px",background:"none",border:"none",borderBottom:"1px solid #161C29",color:"#E2E8F0",fontSize:14,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}
-                    onMouseEnter={e=>e.target.style.background="#364258"} onMouseLeave={e=>e.target.style.background="none"}>{name}</button>)}
+                <Input value={nameQuery} onChange={v=>setNameQuery(v)} placeholder="Start typing your name..." style={{marginBottom:0,textAlign:"center"}}/>
+                {query&&!exactMatch&&filtered.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"var(--card)",border:"1px solid var(--line)",borderRadius:"0 0 8px 8px",maxHeight:200,overflowY:"auto",zIndex:10}}>
+                  {filtered.slice(0,8).map(name=><button key={name} onClick={()=>{setMyNameAndSave(name);setNameQuery("");}} style={{display:"block",width:"100%",padding:"10px 14px",background:"none",border:"none",borderBottom:"1px solid var(--field)",color:"var(--ink)",fontSize:14,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}
+                    onMouseEnter={e=>e.target.style.background="var(--line)"} onMouseLeave={e=>e.target.style.background="none"}>{name}</button>)}
                 </div>}
-                {query&&filtered.length===0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1C2332",border:"1px solid #364258",borderRadius:"0 0 8px 8px",padding:"10px 14px",zIndex:10}}>
-                  <p style={{fontSize:12,color:"#EF4444",marginBottom:8}}>No match found in roster.</p>
-                  <button onClick={()=>{if(pwInput.trim()){setMyNameAndSave(pwInput.trim());setPwInput("");}}} style={{width:"100%",background:"#364258",border:"none",color:"#CBD5E1",borderRadius:6,padding:"8px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Use "{pwInput.trim()}" anyway</button>
+                {query&&filtered.length===0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"var(--card)",border:"1px solid var(--line)",borderRadius:"0 0 8px 8px",padding:"10px 14px",zIndex:10}}>
+                  <p style={{fontSize:12,color:"var(--red)",marginBottom:8}}>No match found in roster.</p>
+                  <button onClick={()=>{if(nameQuery.trim()){setMyNameAndSave(nameQuery.trim());setNameQuery("");}}} style={{width:"100%",background:"var(--line)",border:"none",color:"var(--ink-2)",borderRadius:6,padding:"8px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Use "{nameQuery.trim()}" anyway</button>
                 </div>}
-                {exactMatch&&<button onClick={()=>{setMyNameAndSave(exactMatch);setPwInput("");}} style={{width:"100%",marginTop:12,background:"linear-gradient(135deg,#EC4899,#DB2777)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Continue as {exactMatch}</button>}
+                {exactMatch&&<button onClick={()=>{setMyNameAndSave(exactMatch);setNameQuery("");}} style={{width:"100%",marginTop:12,background:"linear-gradient(135deg,var(--pink),#DB2777)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Continue as {exactMatch}</button>}
               </div>;
             })()}
           </div>
           :<div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
               <div>
-                <h2 style={{fontSize:20,fontWeight:700,color:"#F8FAFC"}}>{myName}</h2>
-                <p style={{fontSize:12,color:"#A0AEC3"}}>Your assignments this week</p>
+                <h2 style={{fontSize:20,fontWeight:700,color:"var(--ink)"}}>{myName}</h2>
+                <p style={{fontSize:12,color:"var(--muted)"}}>Your assignments this week</p>
               </div>
-              <button onClick={()=>setMyNameAndSave("")} style={{background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Change</button>
+              <button onClick={()=>setMyNameAndSave("")} style={{background:"var(--card)",border:"1px solid var(--line)",color:"var(--muted)",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Change</button>
             </div>
 
             {/* Announcements */}
             {announcements.length>0&&<div style={{marginBottom:20}}>
               {[...announcements].sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)).map(ann=>
-                <div key={ann.id} style={{background:ann.pinned?"#F59E0B12":"#1C2332",borderRadius:10,padding:"12px 16px",border:`1px solid ${ann.pinned?"#F59E0B40":"#364258"}`,marginBottom:6}}>
+                <div key={ann.id} style={{background:ann.pinned?"color-mix(in srgb, var(--amber) 7%, transparent)":"var(--card)",borderRadius:10,padding:"12px 16px",border:`1px solid ${ann.pinned?"color-mix(in srgb, var(--amber) 25%, transparent)":"var(--line)"}`,marginBottom:6}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div style={{flex:1}}>
-                      {ann.pinned&&<span style={{fontSize:10,color:"#F59E0B",fontWeight:700,marginRight:6}}>📌 PINNED</span>}
-                      <p style={{fontSize:14,color:"#F1F5F9",lineHeight:1.5}}>{ann.text}</p>
-                      <p style={{fontSize:11,color:"#A0AEC3",marginTop:4}}>{ann.date}</p>
+                      {ann.pinned&&<span style={{fontSize:10,color:"var(--amber)",fontWeight:700,marginRight:6}}>📌 PINNED</span>}
+                      <p style={{fontSize:14,color:"var(--ink)",lineHeight:1.5}}>{ann.text}</p>
+                      <p style={{fontSize:11,color:"var(--muted)",marginTop:4}}>{ann.date}</p>
                     </div>
                     {adminUnlocked&&<div style={{display:"flex",gap:4,flexShrink:0}}>
-                      <button onClick={()=>togglePinAnnouncement(ann.id)} style={{background:"none",border:"none",color:ann.pinned?"#F59E0B":"#A0AEC3",cursor:"pointer",fontSize:12,padding:"0 2px"}}>📌</button>
-                      <button onClick={()=>deleteAnnouncement(ann.id)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1}}>×</button>
+                      <button onClick={()=>togglePinAnnouncement(ann.id)} style={{background:"none",border:"none",color:ann.pinned?"var(--amber)":"var(--muted)",cursor:"pointer",fontSize:12,padding:"0 2px",minWidth:38,minHeight:38}}>📌</button>
+                      <button onClick={()=>deleteAnnouncement(ann.id)} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:14,padding:"0 2px",minWidth:38,minHeight:38,lineHeight:1}}>×</button>
                     </div>}
                   </div>
                 </div>
               )}
             </div>}
 
-            {adminUnlocked&&<div style={{background:"#1C2332",borderRadius:10,padding:"12px 16px",border:"1px solid #364258",marginBottom:20}}>
+            {adminUnlocked&&<div style={{background:"var(--card)",borderRadius:10,padding:"12px 16px",border:"1px solid var(--line)",marginBottom:20}}>
               <div style={{display:"flex",gap:8}}>
                 <Input value={newAnnouncement} onChange={setNewAnnouncement} placeholder="Post an announcement..." style={{flex:1,padding:"8px 10px",fontSize:13}}/>
-                <SmallBtn onClick={()=>addAnnouncement(newAnnouncement)} color="#F59E0B">Post</SmallBtn>
+                <SmallBtn onClick={()=>addAnnouncement(newAnnouncement)} color="var(--amber)">Post</SmallBtn>
               </div>
             </div>}
 
@@ -1247,11 +1308,11 @@ body{background:#10131c}
             <TaskFocus tasks={personalTasks} name={myName} week={currentWeek} onProjects={()=>setView("projects")} onComplete={t=>openCompletion(t.type,currentWeek,t.id,t.index,t.name)}/>
 
             {/* Quick Stats */}
-            {stats[myName]&&<div style={{marginTop:20,background:"#1C2332",borderRadius:12,padding:16,border:"1px solid #364258"}}>
-              <h3 style={{fontSize:13,fontWeight:700,color:"#94A3B8",marginBottom:10,letterSpacing:"0.05em"}}>SEMESTER STATS</h3>
+            {stats[myName]&&<div style={{marginTop:20,background:"var(--card)",borderRadius:12,padding:16,border:"1px solid var(--line)"}}>
+              <h3 style={{fontSize:13,fontWeight:700,color:"var(--muted)",marginBottom:10,letterSpacing:"0.05em"}}>SEMESTER STATS</h3>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8}}>
-                {[{n:stats[myName].done,l:"Done",c:"#D4A843"},{n:stats[myName].verified,l:"Verified",c:"#3B82F6"},{n:stats[myName].missed,l:"Missed",c:"#EF4444"},{n:stats[myName].pending,l:"Pending",c:"#F59E0B"}].map(s=>
-                  <div key={s.l} style={{textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace"}}>{s.n}</div><div style={{fontSize:10,color:"#A0AEC3",marginTop:2}}>{s.l}</div></div>
+                {[{n:stats[myName].done,l:"Done",c:"var(--gold)"},{n:stats[myName].verified,l:"Verified",c:"var(--blue)"},{n:stats[myName].missed,l:"Missed",c:"var(--red)"},{n:stats[myName].pending,l:"Pending",c:"var(--amber)"}].map(s=>
+                  <div key={s.l} style={{textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace"}}>{s.n}</div><div style={{fontSize:10,color:"var(--muted)",marginTop:2}}>{s.l}</div></div>
                 )}
               </div>
             </div>}
@@ -1259,7 +1320,7 @@ body{background:#10131c}
         </div>}
 
         {/* ══════ DASHBOARD ══════ */}
-        {view==="dashboard"&&<div className="fu">
+        {view==="dashboard"&&<div className="fu"><h2 className="page-title">Weekly schedule</h2>
           {(()=>{
             const assignedSet=new Set();
             Object.values(weekData).forEach(j=>{(j?.assigned||[]).forEach(n=>assignedSet.add(n));});
@@ -1267,14 +1328,14 @@ body{background:#10131c}
             const allAssigned=unassigned.length===0;
             return<>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:allAssigned?12:8}}>
-                <div style={{fontSize:12,color:allAssigned?"#D4A843":"#F59E0B",fontFamily:"'Space Mono',monospace",fontWeight:600}}>{assignedSet.size}/{brotherNames.length} brothers assigned</div>
-                {adminUnlocked&&<SmallBtn onClick={reshuffleWeeklyAssignments} color="#D4A843">🔄 Reshuffle</SmallBtn>}
+                <div style={{fontSize:12,color:allAssigned?"var(--gold)":"var(--amber)",fontFamily:"'Space Mono',monospace",fontWeight:600}}>{assignedSet.size}/{brotherNames.length} brothers assigned</div>
+                {adminUnlocked&&<SmallBtn onClick={reshuffleWeeklyAssignments} color="var(--gold)">🔄 Reshuffle</SmallBtn>}
               </div>
-              {!allAssigned&&adminUnlocked&&<div style={{background:"#F59E0B10",border:"1px solid #F59E0B30",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
-                <div style={{fontSize:12,color:"#F59E0B",fontWeight:600,marginBottom:8}}>Unassigned brothers:</div>
+              {!allAssigned&&adminUnlocked&&<div style={{background:"color-mix(in srgb, var(--amber) 6%, transparent)",border:"1px solid color-mix(in srgb, var(--amber) 19%, transparent)",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
+                <div style={{fontSize:12,color:"var(--amber)",fontWeight:600,marginBottom:8}}>Unassigned brothers:</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {unassigned.map(name=><div key={name} style={{display:"flex",alignItems:"center",gap:4,background:"#1C2332",borderRadius:6,padding:"4px 8px",border:"1px solid #364258"}}>
-                    <span style={{fontSize:12,color:"#CBD5E1"}}>{name}</span>
+                  {unassigned.map(name=><div key={name} style={{display:"flex",alignItems:"center",gap:4,background:"var(--card)",borderRadius:6,padding:"4px 8px",border:"1px solid var(--line)"}}>
+                    <span style={{fontSize:12,color:"var(--ink-2)"}}>{name}</span>
                     <button onClick={()=>{
                       // Add them to the open job with the fewest people (never past MAX_PER_JOB, never a chair's job)
                       const u=JSON.parse(JSON.stringify(assignments));
@@ -1291,39 +1352,39 @@ body{background:#10131c}
                         u[wk][minJob].assigned=[...(u[wk][minJob].assigned||[]),name];
                         setAssignments(u);saveA(u);
                       }
-                    }} style={{background:"#D4A84330",border:"none",color:"#D4A843",borderRadius:4,padding:"1px 6px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ Assign</button>
+                    }} style={{background:"color-mix(in srgb, var(--gold) 19%, transparent)",border:"none",color:"var(--gold)",borderRadius:4,padding:"1px 6px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ Assign</button>
                   </div>)}
                 </div>
               </div>}
             </>;
           })()}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
-            {[{n:weekStats.done,l:"Done",c:"#D4A843"},{n:weekStats.pending,l:"Pending",c:"#F59E0B"},{n:weekStats.missed,l:"Missed",c:"#EF4444"}].map(s=><div key={s.l} style={{background:"#1C2332",borderRadius:10,padding:"14px 12px",textAlign:"center",border:"1px solid #364258"}}><div style={{fontSize:26,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{s.n}</div><div style={{fontSize:11,color:"#A0AEC3",marginTop:4}}>{s.l}</div></div>)}
+            {[{n:weekStats.done,l:"Done",c:"var(--gold)"},{n:weekStats.pending,l:"Pending",c:"var(--amber)"},{n:weekStats.missed,l:"Missed",c:"var(--red)"}].map(s=><div key={s.l} style={{background:"var(--card)",borderRadius:10,padding:"14px 12px",textAlign:"center",border:"1px solid var(--line)"}}><div style={{fontSize:26,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace",lineHeight:1}}>{s.n}</div><div style={{fontSize:11,color:"var(--muted)",marginTop:4}}>{s.l}</div></div>)}
           </div>
           <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-            <button onClick={()=>setAreaFilter(null)} style={{background:!areaFilter?"#364258":"#1C2332",border:`1px solid ${!areaFilter?"#4D3A7E":"#364258"}`,color:!areaFilter?"#F8FAFC":"#94A3B8",borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All</button>
-            {AREA_KEYS.map(k=><button key={k} onClick={()=>setAreaFilter(areaFilter===k?null:k)} style={{background:areaFilter===k?AREA_META[k].color+"22":"#1C2332",border:`1px solid ${areaFilter===k?AREA_META[k].color:"#364258"}`,color:areaFilter===k?AREA_META[k].color:"#94A3B8",borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{AREA_META[k].label}</button>)}
+            <button onClick={()=>setAreaFilter(null)} style={{background:!areaFilter?"var(--line)":"var(--card)",border:`1px solid ${!areaFilter?"var(--muted)":"var(--line)"}`,color:!areaFilter?"var(--ink)":"var(--muted)",borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>All</button>
+            {AREA_KEYS.map(k=><button key={k} onClick={()=>setAreaFilter(areaFilter===k?null:k)} style={{background:areaFilter===k?AREA_META[k].color+"22":"var(--card)",border:`1px solid ${areaFilter===k?AREA_META[k].color:"var(--line)"}`,color:areaFilter===k?AREA_META[k].color:"var(--muted)",borderRadius:20,padding:"5px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{AREA_META[k].label}</button>)}
           </div>
           <div className="job-grid">
             {jobs.filter(j=>!areaFilter||j.area===areaFilter).map((job,i)=>{const data=weekData[job.id];if(!data)return null;const area=AREA_META[job.area]||{label:"?",color:"#6B7280"};const isEd=weeklyEditingJob===job.id;return(
-              <div key={job.id} className="ch fu" onClick={()=>setShowJobDetail(showJobDetail===job.id?null:job.id)} style={{background:"#1C2332",borderRadius:12,padding:"14px 16px",border:`1px solid ${data.status==="missed"?"#EF444440":"#364258"}`,animationDelay:`${i*.03}s`,cursor:"pointer"}}>
+              <div key={job.id} className="ch fu" onClick={()=>setShowJobDetail(showJobDetail===job.id?null:job.id)} style={{background:"var(--card)",borderRadius:12,padding:"14px 16px",border:`1px solid ${data.status==="missed"?"color-mix(in srgb, var(--red) 25%, transparent)":"var(--line)"}`,animationDelay:`${i*.03}s`,cursor:"pointer"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                   <div style={{flex:1}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:area.color,boxShadow:`0 0 6px ${area.color}60`,flexShrink:0}}/><span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{job.name}</span>{job.rotating&&<span style={{fontSize:10,color:"#F59E0B",background:"#F59E0B18",padding:"1px 7px",borderRadius:4,fontWeight:600,border:"1px solid #F59E0B30"}}>ROT</span>}{job.floorRotate&&<span style={{fontSize:10,color:"#06B6D4",background:"#06B6D418",padding:"1px 7px",borderRadius:4,fontWeight:600,border:"1px solid #06B6D430"}}>FLOOR</span>}</div>
-                    <div style={{fontSize:13,color:"#94A3B8",marginTop:4,marginLeft:16}}>{data.assigned?.join(", ")}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:area.color,boxShadow:`0 0 6px ${tint(area.color,38)}`,flexShrink:0}}/><span style={{fontSize:14,fontWeight:600,color:"var(--ink)"}}>{job.name}</span>{job.rotating&&<span style={{fontSize:10,color:"var(--amber)",background:"color-mix(in srgb, var(--amber) 9%, transparent)",padding:"1px 7px",borderRadius:4,fontWeight:600,border:"1px solid color-mix(in srgb, var(--amber) 19%, transparent)"}}>ROT</span>}{job.floorRotate&&<span style={{fontSize:10,color:"var(--cyan)",background:"color-mix(in srgb, var(--cyan) 9%, transparent)",padding:"1px 7px",borderRadius:4,fontWeight:600,border:"1px solid color-mix(in srgb, var(--cyan) 19%, transparent)"}}>FLOOR</span>}</div>
+                    <div style={{fontSize:13,color:"var(--muted)",marginTop:4,marginLeft:16}}>{data.assigned?.join(", ")}</div>
                   </div>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    {adminUnlocked&&<button onClick={e=>{e.stopPropagation();if(isEd)setWeeklyEditingJob(null);else{setWeeklyEditingJob(job.id);setWeeklyEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"#A0AEC3",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✏️</button>}
+                    {adminUnlocked&&<button onClick={e=>{e.stopPropagation();if(isEd)setWeeklyEditingJob(null);else{setWeeklyEditingJob(job.id);setWeeklyEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:14,padding:"0 4px",minWidth:38,minHeight:38}}>✏️</button>}
                     <StatusBadge status={data.status} onClick={e=>{e.stopPropagation();cycleStatus(currentWeek,job.id,adminUnlocked);}}/>
                   </div>
                 </div>
-                {isEd&&adminUnlocked&&<div onClick={e=>e.stopPropagation()} style={{marginTop:10,paddingTop:10,borderTop:"1px solid #364258",display:"flex",flexDirection:"column",gap:8}}>
+                {isEd&&adminUnlocked&&<div onClick={e=>e.stopPropagation()} style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--line)",display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"flex",gap:8}}>
                     <Input value={weeklyEditNames} onChange={setWeeklyEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/>
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <label style={{fontSize:11,color:"#94A3B8",whiteSpace:"nowrap"}}>Duration:</label>
-                    <select value={weeklyEditDuration} onChange={e=>setWeeklyEditDuration(e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"5px 24px 5px 8px",fontSize:12,fontFamily:"inherit",flex:1}}>
+                    <label style={{fontSize:11,color:"var(--muted)",whiteSpace:"nowrap"}}>Duration:</label>
+                    <select value={weeklyEditDuration} onChange={e=>setWeeklyEditDuration(e.target.value)} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:6,padding:"5px 24px 5px 8px",fontSize:12,fontFamily:"inherit",flex:1}}>
                       <option value="1">This week only</option>
                       <option value="2">2 weeks</option>
                       <option value="3">3 weeks</option>
@@ -1335,7 +1396,7 @@ body{background:#10131c}
                     <SmallBtn onClick={()=>{overrideWeeklyJob(currentWeek,job.id,weeklyEditNames.split(",").map(n=>n.trim()).filter(Boolean),weeklyEditDuration);setWeeklyEditingJob(null);setWeeklyEditDuration("1");}}>Save</SmallBtn>
                   </div>
                 </div>}
-                {showJobDetail===job.id&&!isEd&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #364258",fontSize:12,color:"#A0AEC3",lineHeight:1.6}}><span style={{color:"#94A3B8",fontWeight:600}}>What to do: </span>{job.desc}</div>}
+                {showJobDetail===job.id&&!isEd&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid var(--line)",fontSize:12,color:"var(--muted)",lineHeight:1.6}}><span style={{color:"var(--muted)",fontWeight:600}}>What to do: </span>{job.desc}</div>}
               </div>);})}
           </div>
         </div>}
@@ -1348,23 +1409,24 @@ body{background:#10131c}
             const totalPool=new Set([...pool,...makeups]).size;
             const assignedSet=new Set();
             Object.values(sunWeekData.jobs||{}).forEach(j=>{(j.assigned||[]).forEach(n=>assignedSet.add(n));});
-            const totalAssigned=assignedSet.size;
+            // Count only people expected this Sunday, so hand-added extras can't push it past 100%.
+            const totalAssigned=[...new Set([...pool,...makeups])].filter(n=>assignedSet.has(n)).length;
             return<>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-            <div><h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4}}>Sunday Cleaning</h2><GroupBadge group={sunWeekData.group} bothGroups={sunWeekData.bothGroups}/></div>
-            {adminUnlocked&&<div style={{display:"flex",gap:6,alignItems:"center"}}><select aria-label="Which pins clean this Sunday" value={sunWeekData.bothGroups?"both":sunWeekData.group||"even"} onChange={e=>setSundayGroup(currentWeek,e.target.value)} style={{background:"#161C29",border:"1px solid #F59E0B50",color:"#F59E0B",borderRadius:6,padding:"5px 22px 5px 8px",fontSize:12,fontWeight:600,fontFamily:"inherit"}}><option value="even">Even pins</option><option value="odd">Odd pins</option><option value="both">Both groups</option></select><SmallBtn onClick={()=>reshuffleSundayWeek(currentWeek)} color="#8B5CF6">Shuffle</SmallBtn></div>}
+            <div><h2 style={{fontSize:16,fontWeight:700,color:"var(--ink)",marginBottom:4}}>Sunday Cleaning</h2><GroupBadge group={sunWeekData.group} bothGroups={sunWeekData.bothGroups}/></div>
+            {adminUnlocked&&<div style={{display:"flex",gap:6,alignItems:"center"}}><select aria-label="Which pins clean this Sunday" value={sunWeekData.bothGroups?"both":sunWeekData.group||"even"} onChange={e=>setSundayGroup(currentWeek,e.target.value)} style={{background:"var(--field)",border:"1px solid color-mix(in srgb, var(--amber) 31%, transparent)",color:"var(--amber)",borderRadius:6,padding:"5px 22px 5px 8px",fontSize:12,fontWeight:600,fontFamily:"inherit"}}><option value="even">Even pins</option><option value="odd">Odd pins</option><option value="both">Both groups</option></select><SmallBtn onClick={()=>reshuffleSundayWeek(currentWeek)} color="var(--purple)">Shuffle</SmallBtn></div>}
           </div>
-          <div style={{fontSize:12,color:totalAssigned>=totalPool?"#D4A843":"#F59E0B",marginBottom:8,fontFamily:"'Space Mono',monospace",fontWeight:600}}>{totalAssigned}/{totalPool} brothers assigned</div>
-          {sunWeekData.jobs?.sun_kitchen&&<div style={{background:"#F59E0B10",border:"1px solid #F59E0B30",borderRadius:8,padding:"8px 12px",marginBottom:16,fontSize:12,color:"#FCD34D",lineHeight:1.5}}>🍳 Kitchen gets up to {KITCHEN_MAX} people and rotates through the pin roster. Nobody is assigned to kitchen again until the remaining roster has had a turn. Everyone else is spread evenly over the other jobs.</div>}
+          <div style={{fontSize:12,color:totalAssigned>=totalPool?"var(--gold)":"var(--amber)",marginBottom:8,fontFamily:"'Space Mono',monospace",fontWeight:600}}>{totalAssigned}/{totalPool} brothers assigned</div>
+          {sunWeekData.jobs?.sun_kitchen&&<div style={{background:"color-mix(in srgb, var(--amber) 6%, transparent)",border:"1px solid color-mix(in srgb, var(--amber) 19%, transparent)",borderRadius:8,padding:"8px 12px",marginBottom:16,fontSize:12,color:"var(--amber)",lineHeight:1.5}}>🍳 Kitchen gets up to {KITCHEN_MAX} people and rotates through the pin roster. Nobody is assigned to kitchen again until the remaining roster has had a turn. Everyone else is spread evenly over the other jobs.</div>}
           {(()=>{
             const fullPool=[...pool,...makeups];
             const unassignedSun=fullPool.filter(n=>!assignedSet.has(n));
             if(unassignedSun.length===0||!adminUnlocked)return null;
-            return<div style={{background:"#8B5CF610",border:"1px solid #8B5CF630",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
-              <div style={{fontSize:12,color:"#8B5CF6",fontWeight:600,marginBottom:8}}>Unassigned brothers:</div>
+            return<div style={{background:"color-mix(in srgb, var(--purple) 6%, transparent)",border:"1px solid color-mix(in srgb, var(--purple) 19%, transparent)",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
+              <div style={{fontSize:12,color:"var(--purple)",fontWeight:600,marginBottom:8}}>Unassigned brothers:</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                {unassignedSun.map(name=><div key={name} style={{display:"flex",alignItems:"center",gap:4,background:"#1C2332",borderRadius:6,padding:"4px 8px",border:"1px solid #364258"}}>
-                  <span style={{fontSize:12,color:"#CBD5E1"}}>{name}</span>
+                {unassignedSun.map(name=><div key={name} style={{display:"flex",alignItems:"center",gap:4,background:"var(--card)",borderRadius:6,padding:"4px 8px",border:"1px solid var(--line)"}}>
+                  <span style={{fontSize:12,color:"var(--ink-2)"}}>{name}</span>
                   <button onClick={()=>{
                     const u=JSON.parse(JSON.stringify(sundayAssignments));
                     const wk=currentWeek;
@@ -1382,28 +1444,28 @@ body{background:#10131c}
                       u[wk].jobs[minJob].assigned=[...(u[wk].jobs[minJob].assigned||[]),name];
                       saveSunWeek(wk,u[wk]);
                     }
-                  }} style={{background:"#D4A84330",border:"none",color:"#D4A843",borderRadius:4,padding:"1px 6px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ Assign</button>
+                  }} style={{background:"color-mix(in srgb, var(--gold) 19%, transparent)",border:"none",color:"var(--gold)",borderRadius:4,padding:"1px 6px",fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ Assign</button>
                 </div>)}
               </div>
             </div>;
           })()}
           </>;})()}
-          {!adminUnlocked&&<div className="manager-login-grid" style={{background:"#1C2332",borderRadius:10,padding:"10px 14px",border:"1px solid #364258",marginBottom:16,display:"grid",gridTemplateColumns:"1fr 1fr auto",alignItems:"center",gap:8}}><Input type="email" value={adminEmail} onChange={v=>{setAdminEmail(v);setPwError(false);}} placeholder="Manager email" style={{padding:"7px 9px",fontSize:12}}/><Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Password" style={{padding:"7px 9px",fontSize:12}}/><SmallBtn onClick={checkPassword}>{adminLoading?"...":"Unlock"}</SmallBtn></div>}
+          {!adminUnlocked&&<p className="quiet" style={{marginBottom:12}}>House manager? <button onClick={()=>setView("manager")} style={{background:"none",border:0,color:"var(--gold-deep)",fontWeight:700,fontSize:12,padding:"8px 2px",cursor:"pointer"}}>Sign in to edit Sunday</button></p>}
           <div className="job-grid">
             {sundayJobs.map((job,i)=>{const data=sunWeekData.jobs?.[job.id];if(!data)return null;const isEd=sundayEditingJob===job.id;return(
-              <div key={job.id} className="fu" style={{background:"#1C2332",borderRadius:12,padding:"14px 16px",border:"1px solid #364258",animationDelay:`${i*.03}s`}}>
+              <div key={job.id} className="fu" style={{background:"var(--card)",borderRadius:12,padding:"14px 16px",border:"1px solid var(--line)",animationDelay:`${i*.03}s`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                   <div style={{flex:1}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:"#8B5CF6",boxShadow:"0 0 6px #8B5CF660",flexShrink:0}}/><span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{job.name}</span></div>
-                    <div style={{fontSize:13,color:"#94A3B8",marginTop:4,marginLeft:16}}>{data.assigned?.join(", ")}</div>
-                    <div style={{fontSize:11,color:"#4D3A7E",marginTop:4,marginLeft:16,lineHeight:1.4}}>{job.desc}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:"var(--purple)",boxShadow:"0 0 6px color-mix(in srgb, var(--purple) 38%, transparent)",flexShrink:0}}/><span style={{fontSize:14,fontWeight:600,color:"var(--ink)"}}>{job.name}</span></div>
+                    <div style={{fontSize:13,color:"var(--muted)",marginTop:4,marginLeft:16}}>{data.assigned?.join(", ")}</div>
+                    <div style={{fontSize:11,color:"var(--muted)",marginTop:4,marginLeft:16,lineHeight:1.4}}>{job.desc}</div>
                   </div>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    {adminUnlocked&&<button onClick={()=>{if(isEd)setSundayEditingJob(null);else{setSundayEditingJob(job.id);setSundayEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"#A0AEC3",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✏️</button>}
+                    {adminUnlocked&&<button onClick={()=>{if(isEd)setSundayEditingJob(null);else{setSundayEditingJob(job.id);setSundayEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:14,padding:"0 4px",minWidth:38,minHeight:38}}>✏️</button>}
                     <StatusBadge status={data.status} onClick={e=>{e.stopPropagation();cycleSundayStatus(currentWeek,job.id,adminUnlocked);}}/>
                   </div>
                 </div>
-                {isEd&&adminUnlocked&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #364258",display:"flex",gap:8}}><Input value={sundayEditNames} onChange={setSundayEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={()=>{overrideSundayJob(currentWeek,job.id,sundayEditNames.split(",").map(n=>n.trim()).filter(Boolean));setSundayEditingJob(null);}}>Save</SmallBtn></div>}
+                {isEd&&adminUnlocked&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--line)",display:"flex",gap:8}}><Input value={sundayEditNames} onChange={setSundayEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={()=>{overrideSundayJob(currentWeek,job.id,sundayEditNames.split(",").map(n=>n.trim()).filter(Boolean));setSundayEditingJob(null);}}>Save</SmallBtn></div>}
               </div>);})}
           </div>
 
@@ -1411,12 +1473,12 @@ body{background:#10131c}
 
           {adminUnlocked&&<div style={{marginTop:16}}>
             {!showTempJobForm?<button onClick={()=>setShowTempJobForm(true)} style={{width:"100%",background:"#C41E3A18",border:"1px solid #C41E3A40",color:"#C41E3A",borderRadius:10,padding:"12px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>+ Add Temp Job (this week only)</button>
-            :<div style={{background:"#1C2332",borderRadius:10,padding:14,border:"1px solid #C41E3A40"}}>
+            :<div style={{background:"var(--card)",borderRadius:10,padding:14,border:"1px solid #C41E3A40"}}>
               <div style={{fontSize:12,color:"#C41E3A",fontWeight:600,marginBottom:8}}>TEMP JOB — This week only</div>
               <Input value={tempJobName} onChange={setTempJobName} placeholder="Job name..." style={{marginBottom:8}}/>
               <Input value={tempJobDesc} onChange={setTempJobDesc} placeholder="Description..." style={{marginBottom:8}}/>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                <span style={{fontSize:11,color:"#A0AEC3"}}>Gets people on the next Shuffle, or use ✏️.</span>
+                <span style={{fontSize:11,color:"var(--muted)"}}>Gets people on the next Shuffle, or use ✏️.</span>
                 <div style={{flex:1}}/>
                 <SmallBtn onClick={()=>{
                   if(!tempJobName.trim())return;
@@ -1431,7 +1493,7 @@ body{background:#10131c}
                   }
                   setTempJobName("");setTempJobDesc("");setShowTempJobForm(false);
                 }} color="#C41E3A">Add</SmallBtn>
-                <SmallBtn onClick={()=>{setShowTempJobForm(false);setTempJobName("");setTempJobDesc("");}} color="#A0AEC3">Cancel</SmallBtn>
+                <SmallBtn onClick={()=>{setShowTempJobForm(false);setTempJobName("");setTempJobDesc("");}} color="var(--muted)">Cancel</SmallBtn>
               </div>
             </div>}
           </div>}
@@ -1443,19 +1505,19 @@ body{background:#10131c}
               {(sunWeekData.tempJobs||[]).map((tj,i)=>{
                 const data=sunWeekData.jobs?.[tj.id]||{assigned:[],status:"pending"};
                 const isEd=sundayEditingJob===tj.id;
-                return<div key={tj.id} className="fu" style={{background:"#1C2332",borderRadius:12,padding:"14px 16px",border:"1px solid #C41E3A30"}}>
+                return<div key={tj.id} className="fu" style={{background:"var(--card)",borderRadius:12,padding:"14px 16px",border:"1px solid #C41E3A30"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div style={{flex:1}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <div style={{width:8,height:8,borderRadius:"50%",background:"#C41E3A",boxShadow:"0 0 6px #C41E3A60",flexShrink:0}}/>
-                        <span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{tj.name}</span>
+                        <span style={{fontSize:14,fontWeight:600,color:"var(--ink)"}}>{tj.name}</span>
                         <span style={{fontSize:10,color:"#C41E3A",background:"#C41E3A18",padding:"1px 6px",borderRadius:4,fontWeight:600}}>TEMP</span>
                       </div>
-                      <div style={{fontSize:13,color:"#94A3B8",marginTop:4,marginLeft:16}}>{data.assigned?.length?data.assigned.join(", "):"No one assigned yet"}</div>
-                      {tj.desc&&<div style={{fontSize:11,color:"#6B5F80",marginTop:4,marginLeft:16}}>{tj.desc}</div>}
+                      <div style={{fontSize:13,color:"var(--muted)",marginTop:4,marginLeft:16}}>{data.assigned?.length?data.assigned.join(", "):"No one assigned yet"}</div>
+                      {tj.desc&&<div style={{fontSize:11,color:"var(--muted)",marginTop:4,marginLeft:16}}>{tj.desc}</div>}
                     </div>
                     <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                      {adminUnlocked&&<button onClick={()=>{if(isEd)setSundayEditingJob(null);else{setSundayEditingJob(tj.id);setSundayEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"#A0AEC3",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✏️</button>}
+                      {adminUnlocked&&<button onClick={()=>{if(isEd)setSundayEditingJob(null);else{setSundayEditingJob(tj.id);setSundayEditNames(data.assigned?.join(", ")||"");}}} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:14,padding:"0 4px",minWidth:38,minHeight:38}}>✏️</button>}
                       {adminUnlocked&&<button onClick={()=>{
                         const u=JSON.parse(JSON.stringify(sundayAssignments));
                         if(u[currentWeek]){
@@ -1463,41 +1525,41 @@ body{background:#10131c}
                           u[currentWeek].tempJobs=u[currentWeek].tempJobs.filter(t=>t.id!==tj.id);
                           saveSunWeek(currentWeek,u[currentWeek],{removed:[tj.id]});
                         }
-                      }} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:16,padding:"0 4px",lineHeight:1}}>×</button>}
+                      }} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:16,padding:"0 4px",minWidth:38,minHeight:38,lineHeight:1}}>×</button>}
                       <StatusBadge status={data.status} onClick={()=>cycleSundayStatus(currentWeek,tj.id,adminUnlocked)}/>
                     </div>
                   </div>
-                  {isEd&&adminUnlocked&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #364258",display:"flex",gap:8}}><Input value={sundayEditNames} onChange={setSundayEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={()=>{overrideSundayJob(currentWeek,tj.id,sundayEditNames.split(",").map(n=>n.trim()).filter(Boolean));setSundayEditingJob(null);}}>Save</SmallBtn></div>}
+                  {isEd&&adminUnlocked&&<div style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--line)",display:"flex",gap:8}}><Input value={sundayEditNames} onChange={setSundayEditNames} placeholder="Names, comma separated" style={{flex:1,padding:"6px 10px",fontSize:12}}/><SmallBtn onClick={()=>{overrideSundayJob(currentWeek,tj.id,sundayEditNames.split(",").map(n=>n.trim()).filter(Boolean));setSundayEditingJob(null);}}>Save</SmallBtn></div>}
                 </div>;
               })}
             </div>
           </div>}
 
-          {adminUnlocked&&<button onClick={()=>setView("sunday_setup")} style={{marginTop:20,width:"100%",background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:10,padding:"12px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>⚙ Edit Sunday Roster & Jobs</button>}
+          {adminUnlocked&&<button onClick={()=>setView("sunday_setup")} style={{marginTop:20,width:"100%",background:"var(--card)",border:"1px solid var(--line)",color:"var(--muted)",borderRadius:10,padding:"12px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>⚙ Edit Sunday Roster & Jobs</button>}
         </div>}
 
         {/* ══════ SUNDAY SETUP ══════ */}
         {view==="sunday_setup"&&adminUnlocked&&<div className="fu">
-          <button onClick={()=>setView("sunday")} style={{background:"none",border:"none",color:"#8B5CF6",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0}}>← Back</button>
-          <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:16}}>Sunday Setup</h2>
+          <button onClick={()=>setView("sunday")} style={{background:"none",border:"none",color:"var(--purple)",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0}}>← Back</button>
+          <h2 style={{fontSize:16,fontWeight:700,color:"var(--ink)",marginBottom:16}}>Sunday Setup</h2>
           <div style={{display:"flex",gap:6,marginBottom:16}}>
-            {[{key:"even",label:`Even (${evenPins.length})`},{key:"odd",label:`Odd (${oddPins.length})`},{key:"sunjobs",label:`Jobs (${sundayJobs.length})`}].map(t=><button key={t.key} onClick={()=>setSunSetupTab(t.key)} style={{flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:sunSetupTab===t.key?"#8B5CF618":"#1C2332",border:`1px solid ${sunSetupTab===t.key?"#8B5CF6":"#364258"}`,color:sunSetupTab===t.key?"#8B5CF6":"#94A3B8"}}>{t.label}</button>)}
+            {[{key:"even",label:`Even (${evenPins.length})`},{key:"odd",label:`Odd (${oddPins.length})`},{key:"sunjobs",label:`Jobs (${sundayJobs.length})`}].map(t=><button key={t.key} onClick={()=>setSunSetupTab(t.key)} style={{flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:sunSetupTab===t.key?"color-mix(in srgb, var(--purple) 9%, transparent)":"var(--card)",border:`1px solid ${sunSetupTab===t.key?"var(--purple)":"var(--line)"}`,color:sunSetupTab===t.key?"var(--purple)":"var(--muted)"}}>{t.label}</button>)}
           </div>
-          {sunSetupTab==="even"&&<div><div style={{display:"flex",gap:8,marginBottom:12}}><Input value={sunEditName} onChange={setSunEditName} placeholder="Add even pin..." style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditName.trim()){const n=[...evenPins,sunEditName.trim()];setEvenPins(n);saveSunCfg(n,oddPins,sundayJobs);setSunEditName("");}}} color="#8B5CF6">+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{evenPins.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1C2332",borderRadius:8,padding:"8px 12px",border:"1px solid #364258"}}><span style={{fontSize:14,color:"#CBD5E1"}}>{b}</span><button onClick={()=>{const n=evenPins.filter((_,j)=>j!==i);setEvenPins(n);saveSunCfg(n,oddPins,sundayJobs);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
-          {sunSetupTab==="odd"&&<div><div style={{display:"flex",gap:8,marginBottom:12}}><Input value={sunEditName} onChange={setSunEditName} placeholder="Add odd pin..." style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditName.trim()){const n=[...oddPins,sunEditName.trim()];setOddPins(n);saveSunCfg(evenPins,n,sundayJobs);setSunEditName("");}}} color="#06B6D4">+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{oddPins.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1C2332",borderRadius:8,padding:"8px 12px",border:"1px solid #364258"}}><span style={{fontSize:14,color:"#CBD5E1"}}>{b}</span><button onClick={()=>{const n=oddPins.filter((_,j)=>j!==i);setOddPins(n);saveSunCfg(evenPins,n,sundayJobs);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div></div>}
+          {sunSetupTab==="even"&&<div><div style={{display:"flex",gap:8,marginBottom:12}}><Input value={sunEditName} onChange={setSunEditName} placeholder="Add even pin..." style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditName.trim()){const n=[...evenPins,sunEditName.trim()];setEvenPins(n);saveSunCfg(n,oddPins,sundayJobs);setSunEditName("");}}} color="var(--purple)">+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{evenPins.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--card)",borderRadius:8,padding:"8px 12px",border:"1px solid var(--line)"}}><span style={{fontSize:14,color:"var(--ink-2)"}}>{b}</span><button onClick={()=>{const n=evenPins.filter((_,j)=>j!==i);setEvenPins(n);saveSunCfg(n,oddPins,sundayJobs);}} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:18,padding:"0 4px",minWidth:38,minHeight:38,lineHeight:1}}>×</button></div>)}</div></div>}
+          {sunSetupTab==="odd"&&<div><div style={{display:"flex",gap:8,marginBottom:12}}><Input value={sunEditName} onChange={setSunEditName} placeholder="Add odd pin..." style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditName.trim()){const n=[...oddPins,sunEditName.trim()];setOddPins(n);saveSunCfg(evenPins,n,sundayJobs);setSunEditName("");}}} color="var(--cyan)">+ Add</SmallBtn></div><div style={{display:"flex",flexDirection:"column",gap:4}}>{oddPins.map((b,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--card)",borderRadius:8,padding:"8px 12px",border:"1px solid var(--line)"}}><span style={{fontSize:14,color:"var(--ink-2)"}}>{b}</span><button onClick={()=>{const n=oddPins.filter((_,j)=>j!==i);setOddPins(n);saveSunCfg(evenPins,n,sundayJobs);}} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:18,padding:"0 4px",minWidth:38,minHeight:38,lineHeight:1}}>×</button></div>)}</div></div>}
           {sunSetupTab==="sunjobs"&&<div>
-            <div style={{background:"#1C2332",borderRadius:10,padding:14,border:"1px solid #364258",marginBottom:12}}><Input value={sunEditJobName} onChange={setSunEditJobName} placeholder="Job name..." style={{marginBottom:8}}/><Input value={sunEditJobDesc} onChange={setSunEditJobDesc} placeholder="Description..." style={{marginBottom:8}}/><div style={{display:"flex",gap:12,alignItems:"center"}}><span style={{fontSize:11,color:"#A0AEC3"}}>People are spread evenly over jobs; kitchen gets up to {KITCHEN_MAX}.</span><div style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditJobName.trim()){const n=[...sundayJobs,{id:"sun_"+Date.now(),name:sunEditJobName.trim(),desc:sunEditJobDesc.trim()}];setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);setSunEditJobName("");setSunEditJobDesc("");}}} color="#8B5CF6">+ Add</SmallBtn></div></div>
+            <div style={{background:"var(--card)",borderRadius:10,padding:14,border:"1px solid var(--line)",marginBottom:12}}><Input value={sunEditJobName} onChange={setSunEditJobName} placeholder="Job name..." style={{marginBottom:8}}/><Input value={sunEditJobDesc} onChange={setSunEditJobDesc} placeholder="Description..." style={{marginBottom:8}}/><div style={{display:"flex",gap:12,alignItems:"center"}}><span style={{fontSize:11,color:"var(--muted)"}}>People are spread evenly over jobs; kitchen gets up to {KITCHEN_MAX}.</span><div style={{flex:1}}/><SmallBtn onClick={()=>{if(sunEditJobName.trim()){const n=[...sundayJobs,{id:"sun_"+Date.now(),name:sunEditJobName.trim(),desc:sunEditJobDesc.trim()}];setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);setSunEditJobName("");setSunEditJobDesc("");}}} color="var(--purple)">+ Add</SmallBtn></div></div>
             <div style={{display:"flex",flexDirection:"column",gap:4}}>{sundayJobs.map((j,i)=>{
               const isEd=editingSunJobIdx===i;
-              return<div key={j.id} style={{background:"#1C2332",borderRadius:8,padding:isEd?"12px":"8px 12px",border:`1px solid ${isEd?"#8B5CF6":"#364258"}`}}>
+              return<div key={j.id} style={{background:"var(--card)",borderRadius:8,padding:isEd?"12px":"8px 12px",border:`1px solid ${isEd?"var(--purple)":"var(--line)"}`}}>
                 {!isEd?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <div style={{cursor:"pointer",flex:1}} onClick={()=>setEditingSunJobIdx(i)}>
-                    <span style={{fontSize:13,color:"#CBD5E1"}}>{j.name}</span>
-                    {j.id===KITCHEN_ID&&<span style={{fontSize:11,color:"#A0AEC3",marginLeft:8}}>up to {KITCHEN_MAX}</span>}
+                    <span style={{fontSize:13,color:"var(--ink-2)"}}>{j.name}</span>
+                    {j.id===KITCHEN_ID&&<span style={{fontSize:11,color:"var(--muted)",marginLeft:8}}>up to {KITCHEN_MAX}</span>}
                   </div>
                   <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
-                    <button onClick={()=>setEditingSunJobIdx(i)} style={{background:"none",border:"none",color:"#A0AEC3",cursor:"pointer",fontSize:13,padding:"0 4px"}}>✏️</button>
-                    <button onClick={()=>{const n=sundayJobs.filter((_,k)=>k!==i);setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
+                    <button onClick={()=>setEditingSunJobIdx(i)} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:13,padding:"0 4px",minWidth:38,minHeight:38}}>✏️</button>
+                    <button onClick={()=>{const n=sundayJobs.filter((_,k)=>k!==i);setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);}} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:18,padding:"0 4px",minWidth:38,minHeight:38,lineHeight:1}}>×</button>
                   </div>
                 </div>
                 :<div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -1505,23 +1567,23 @@ body{background:#10131c}
                   <Input value={j.desc||""} onChange={v=>{const n=[...sundayJobs];n[i]={...n[i],desc:v};setSundayJobs(n);}} placeholder="Description" style={{padding:"8px 10px",fontSize:12}}/>
                   <div style={{display:"flex",gap:10,alignItems:"center"}}>
                     <div style={{flex:1}}/>
-                    <SmallBtn onClick={()=>{saveSunCfg(evenPins,oddPins,sundayJobs);setEditingSunJobIdx(null);}} color="#D4A843">Done</SmallBtn>
-                    <button onClick={()=>{const n=sundayJobs.filter((_,k)=>k!==i);setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);setEditingSunJobIdx(null);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>Delete</button>
+                    <SmallBtn onClick={()=>{saveSunCfg(evenPins,oddPins,sundayJobs);setEditingSunJobIdx(null);}} color="var(--gold)">Done</SmallBtn>
+                    <button onClick={()=>{const n=sundayJobs.filter((_,k)=>k!==i);setSundayJobs(n);saveSunCfg(evenPins,oddPins,n);setEditingSunJobIdx(null);}} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>Delete</button>
                   </div>
                 </div>}
               </div>;})}
             </div>
           </div>}
-          <button onClick={()=>{const sa=generateSundayAssignments(evenPins,oddPins,sundayJobs,weeks,sundayAssignments);setSundayAssignments(sa);saveSunA(sa);setView("sunday");}} style={{marginTop:20,width:"100%",background:"linear-gradient(135deg,#8B5CF6,#7C3AED)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔄 Regenerate Sunday</button>
+          <button onClick={()=>{const sa=generateSundayAssignments(evenPins,oddPins,sundayJobs,weeks,sundayAssignments);setSundayAssignments(sa);saveSunA(sa);setView("sunday");}} style={{marginTop:20,width:"100%",background:"linear-gradient(135deg,var(--purple),#7C3AED)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔄 Regenerate Sunday</button>
         </div>}
 
         {/* ══════ PROJECTS ══════ */}
         {view==="projects"&&<div className="fu">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-            <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9"}}>House Projects</h2>
-            {adminUnlocked&&<SmallBtn onClick={()=>setView("project_setup")} color="#EC4899">⚙ Edit</SmallBtn>}
+            <h2 style={{fontSize:16,fontWeight:700,color:"var(--ink)"}}>House Projects</h2>
+            {adminUnlocked&&<SmallBtn onClick={()=>setView("project_setup")} color="var(--pink)">⚙ Edit</SmallBtn>}
           </div>
-          <p style={{fontSize:12,color:"#A0AEC3",marginBottom:16,lineHeight:1.5}}>Claim a project, finish it, get points. Whoever has the most points at the end of the semester wins a prize!</p>
+          <p style={{fontSize:12,color:"var(--muted)",marginBottom:16,lineHeight:1.5}}>Claim a project, finish it, get points. Whoever has the most points at the end of the semester wins a prize!</p>
 
           <div className="job-grid">
             {(projWeekData.projects||[]).map((proj,i)=>{
@@ -1531,46 +1593,47 @@ body{background:#10131c}
               const isDone=proj.status==="done";
               const isVerified=proj.status==="verified";
               return(
-                <div key={i} className="fu" style={{background:"#1C2332",borderRadius:12,padding:"14px 16px",border:`1px solid ${isVerified?"#3B82F640":isDone?"#D4A84340":"#364258"}`,animationDelay:`${i*.04}s`}}>
+                <div key={i} className="fu" style={{background:"var(--card)",borderRadius:12,padding:"14px 16px",border:`1px solid ${isVerified?"color-mix(in srgb, var(--blue) 25%, transparent)":isDone?"color-mix(in srgb, var(--gold) 25%, transparent)":"var(--line)"}`,animationDelay:`${i*.04}s`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div style={{flex:1}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                        <span style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{proj.name}</span>
+                        <span style={{fontSize:14,fontWeight:600,color:"var(--ink)"}}>{proj.name}</span>
                         <DiffBadge d={proj.difficulty}/>
                       </div>
-                      <div style={{fontSize:11,color:"#4D3A7E",marginTop:4}}>{proj.area}</div>
-                      {(isClaimed||isDone||isVerified)&&<div style={{fontSize:12,color:isVerified?"#3B82F6":isDone?"#D4A843":"#F59E0B",marginTop:6,fontWeight:600}}>
+                      <div style={{fontSize:11,color:"var(--muted)",marginTop:4}}>{proj.area}</div>
+                      {(isClaimed||isDone||isVerified)&&<div style={{fontSize:12,color:isVerified?"var(--blue)":isDone?"var(--gold)":"var(--amber)",marginTop:6,fontWeight:600}}>
                         {isVerified?"✓ Verified":isDone?"✓ Done":"⏳ Claimed"} — {proj.claimedBy}
                       </div>}
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end"}}>
-                      {isAvail&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
-                        <Input value={projClaimName} onChange={setProjClaimName} placeholder="Your name" style={{width:100,padding:"5px 8px",fontSize:11}}/>
-                        <SmallBtn onClick={()=>{if(projClaimName.trim()){claimProject(currentWeek,i,projClaimName.trim());}}} color="#EC4899">Claim</SmallBtn>
+                      {isAvail&&myName&&<SmallBtn onClick={()=>claimProject(currentWeek,i,myName)} color="var(--pink)">Claim</SmallBtn>}
+                      {isAvail&&!myName&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
+                        <Input value={projClaimName} onChange={setProjClaimName} placeholder={myName||"Your name"} style={{width:100,padding:"5px 8px",fontSize:11}}/>
+                        <SmallBtn onClick={()=>{const who=projClaimName.trim()||myName;if(who){claimProject(currentWeek,i,who);setProjClaimName("");}}} color="var(--pink)">Claim</SmallBtn>
                       </div>}
-                      {isClaimed&&<SmallBtn onClick={()=>completeProject(currentWeek,i)} color="#D4A843">Mark Done</SmallBtn>}
-                      {isClaimed&&<SmallBtn onClick={()=>unclaimProject(currentWeek,i)} color="#EF4444">Unclaim</SmallBtn>}
-                      {isDone&&adminUnlocked&&<SmallBtn onClick={()=>verifyProject(currentWeek,i)} color="#3B82F6">Verify</SmallBtn>}
-                      {isVerified&&<span style={{fontSize:11,color:"#3B82F6",fontWeight:700}}>✓ VERIFIED</span>}
+                      {isClaimed&&<SmallBtn onClick={()=>completeProject(currentWeek,i)} color="var(--gold)">Mark Done</SmallBtn>}
+                      {isClaimed&&<SmallBtn onClick={()=>unclaimProject(currentWeek,i)} color="var(--red)">Unclaim</SmallBtn>}
+                      {isDone&&adminUnlocked&&<SmallBtn onClick={()=>verifyProject(currentWeek,i)} color="var(--blue)">Verify</SmallBtn>}
+                      {isVerified&&<span style={{fontSize:11,color:"var(--blue)",fontWeight:700}}>✓ VERIFIED</span>}
                     </div>
                   </div>
                 </div>);
             })}
-            {(projWeekData.projects||[]).length===0&&<div style={{textAlign:"center",color:"#A0AEC3",padding:20,fontSize:13}}>No projects assigned this week.</div>}
+            {(projWeekData.projects||[]).length===0&&<div style={{textAlign:"center",color:"var(--muted)",padding:20,fontSize:13}}>No projects assigned this week.</div>}
           </div>
 
           {/* Project Leaderboard */}
-          <div style={{marginTop:24,background:"#1C2332",borderRadius:12,padding:16,border:"1px solid #EC489940"}}>
-            <h3 style={{fontSize:13,fontWeight:700,color:"#EC4899",marginBottom:10,letterSpacing:"0.05em"}}>🏆 PROJECT LEADERBOARD</h3>
+          <div style={{marginTop:24,background:"var(--card)",borderRadius:12,padding:16,border:"1px solid color-mix(in srgb, var(--pink) 25%, transparent)"}}>
+            <h3 style={{fontSize:13,fontWeight:700,color:"var(--pink)",marginBottom:10,letterSpacing:"0.05em"}}>🏆 PROJECT LEADERBOARD</h3>
             {Object.entries(projectStats).sort(([,a],[,b])=>b.points-a.points).length===0
-              ?<div style={{fontSize:13,color:"#A0AEC3",textAlign:"center",padding:10}}>No projects completed yet — be the first!</div>
+              ?<div style={{fontSize:13,color:"var(--muted)",textAlign:"center",padding:10}}>No projects completed yet — be the first!</div>
               :Object.entries(projectStats).sort(([,a],[,b])=>b.points-a.points).map(([name,s],i)=>{
                 const medal=i<3?["🥇","🥈","🥉"][i]:null;
-                return<div key={name} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #364258"}}>
-                  <span style={{width:24,textAlign:"center",fontSize:medal?16:13,color:"#A0AEC3",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{medal||(i+1)}</span>
-                  <span style={{flex:1,fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{name}</span>
-                  <span style={{fontSize:12,color:"#EC4899",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{s.points} pts</span>
-                  <span style={{fontSize:11,color:"#A0AEC3"}}>{s.count} done</span>
+                return<div key={name} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid var(--line)"}}>
+                  <span style={{width:24,textAlign:"center",fontSize:medal?16:13,color:"var(--muted)",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{medal||(i+1)}</span>
+                  <span style={{flex:1,fontSize:14,fontWeight:600,color:"var(--ink)"}}>{name}</span>
+                  <span style={{fontSize:12,color:"var(--pink)",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{s.points} pts</span>
+                  <span style={{fontSize:11,color:"var(--muted)"}}>{s.count} done</span>
                 </div>;
               })}
           </div>
@@ -1578,60 +1641,60 @@ body{background:#10131c}
 
         {/* ══════ PROJECT SETUP ══════ */}
         {view==="project_setup"&&adminUnlocked&&<div className="fu">
-          <button onClick={()=>setView("projects")} style={{background:"none",border:"none",color:"#EC4899",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0}}>← Back</button>
-          <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:16}}>Manage Projects ({projects.length})</h2>
-          <div style={{background:"#1C2332",borderRadius:10,padding:14,border:"1px solid #364258",marginBottom:12}}>
+          <button onClick={()=>setView("projects")} style={{background:"none",border:"none",color:"var(--pink)",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0}}>← Back</button>
+          <h2 style={{fontSize:16,fontWeight:700,color:"var(--ink)",marginBottom:16}}>Manage Projects ({projects.length})</h2>
+          <div style={{background:"var(--card)",borderRadius:10,padding:14,border:"1px solid var(--line)",marginBottom:12}}>
             <Input value={projEditName} onChange={setProjEditName} placeholder="Project name..." style={{marginBottom:8}}/>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <select value={projEditArea} onChange={e=>setProjEditArea(e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"8px 28px 8px 10px",fontSize:13,fontFamily:"inherit",flex:1}}>
+              <select value={projEditArea} onChange={e=>setProjEditArea(e.target.value)} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:6,padding:"8px 28px 8px 10px",fontSize:13,fontFamily:"inherit",flex:1}}>
                 {["Basement","1st Floor","2nd Floor","3rd Floor","Common","Outside"].map(a=><option key={a} value={a}>{a}</option>)}
               </select>
-              <select value={projEditDiff} onChange={e=>setProjEditDiff(e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"8px 28px 8px 10px",fontSize:13,fontFamily:"inherit"}}>
+              <select value={projEditDiff} onChange={e=>setProjEditDiff(e.target.value)} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:6,padding:"8px 28px 8px 10px",fontSize:13,fontFamily:"inherit"}}>
                 <option value="easy">Easy (1pt)</option><option value="medium">Medium (2pts)</option>
               </select>
-              <SmallBtn onClick={()=>{if(projEditName.trim()){const n=[...projects,{id:"p_"+Date.now(),name:projEditName.trim(),area:projEditArea,difficulty:projEditDiff}];setProjects(n);saveProjCfg(n);setProjEditName("");}}} color="#EC4899">+ Add</SmallBtn>
+              <SmallBtn onClick={()=>{if(projEditName.trim()){const n=[...projects,{id:"p_"+Date.now(),name:projEditName.trim(),area:projEditArea,difficulty:projEditDiff}];setProjects(n);saveProjCfg(n);setProjEditName("");}}} color="var(--pink)">+ Add</SmallBtn>
             </div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            {projects.map((p,i)=><div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1C2332",borderRadius:8,padding:"8px 12px",border:"1px solid #364258"}}>
+            {projects.map((p,i)=><div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--card)",borderRadius:8,padding:"8px 12px",border:"1px solid var(--line)"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
-                <span style={{fontSize:13,color:"#CBD5E1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                <span style={{fontSize:13,color:"var(--ink-2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
                 <DiffBadge d={p.difficulty}/>
               </div>
-              <button onClick={()=>{const n=projects.filter((_,k)=>k!==i);setProjects(n);saveProjCfg(n);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1,flexShrink:0}}>×</button>
+              <button onClick={()=>{const n=projects.filter((_,k)=>k!==i);setProjects(n);saveProjCfg(n);}} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:18,padding:"0 4px",minWidth:38,minHeight:38,lineHeight:1,flexShrink:0}}>×</button>
             </div>)}
           </div>
-          <button onClick={()=>{const wp=generateWeeklyProjects(projects,weeks);setWeeklyProjects(wp);saveProjA(wp);setView("projects");}} style={{marginTop:20,width:"100%",background:"linear-gradient(135deg,#EC4899,#DB2777)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔄 Reshuffle Projects Across Weeks</button>
+          <button onClick={()=>{const wp=generateWeeklyProjects(projects,weeks);setWeeklyProjects(wp);saveProjA(wp);setView("projects");}} style={{marginTop:20,width:"100%",background:"linear-gradient(135deg,var(--pink),#DB2777)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔄 Reshuffle Projects Across Weeks</button>
         </div>}
 
         {/* ══════ HOUSE ISSUES & SUPPLIES ══════ */}
         {view==="issues"&&<div className="fu">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
-            <div><h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9"}}>House Issues</h2><p style={{fontSize:12,color:"#A0AEC3",marginTop:3}}>Report damage, maintenance, cleaning, network, or missing supplies.</p></div>
-            <span style={{fontSize:11,color:"#F59E0B",background:"#F59E0B16",padding:"4px 8px",borderRadius:6}}>{openIssues.length} open</span>
+            <div><h2 style={{fontSize:18,fontWeight:700,color:"var(--ink)"}}>House Issues</h2><p style={{fontSize:12,color:"var(--muted)",marginTop:3}}>Report damage, maintenance, cleaning, network, or missing supplies.</p></div>
+            <span style={{fontSize:11,color:"var(--amber)",background:"color-mix(in srgb, var(--amber) 9%, transparent)",padding:"4px 8px",borderRadius:6,whiteSpace:"nowrap"}}>{openIssues.length} open</span>
           </div>
           <div className="hm-card" style={{marginBottom:16}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-              <select value={issueForm.category} onChange={e=>setIssueForm({...issueForm,category:e.target.value})} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 30px 10px 10px",fontFamily:"inherit"}}>{ISSUE_CATEGORIES.map(x=><option key={x}>{x}</option>)}</select>
-              <select value={issueForm.priority} onChange={e=>setIssueForm({...issueForm,priority:e.target.value})} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 30px 10px 10px",fontFamily:"inherit"}}>{ISSUE_PRIORITIES.map(x=><option key={x} value={x}>{x.toUpperCase()}</option>)}</select>
+              <select value={issueForm.category} onChange={e=>setIssueForm({...issueForm,category:e.target.value})} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:8,padding:"10px 30px 10px 10px",fontFamily:"inherit"}}>{ISSUE_CATEGORIES.map(x=><option key={x}>{x}</option>)}</select>
+              <select value={issueForm.priority} onChange={e=>setIssueForm({...issueForm,priority:e.target.value})} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:8,padding:"10px 30px 10px 10px",fontFamily:"inherit"}}>{ISSUE_PRIORITIES.map(x=><option key={x} value={x}>{x.toUpperCase()}</option>)}</select>
             </div>
             <Input value={issueForm.location} onChange={v=>setIssueForm({...issueForm,location:v})} placeholder="Location, e.g. 2nd floor bathroom" style={{marginBottom:8}}/>
-            <textarea value={issueForm.description} onChange={e=>setIssueForm({...issueForm,description:e.target.value})} placeholder={issueForm.category==="Supplies"?"What supply is low or missing?":"What is wrong?"} rows={3} style={{width:"100%",resize:"vertical",background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:8}}/>
+            <textarea value={issueForm.description} onChange={e=>setIssueForm({...issueForm,description:e.target.value})} placeholder={issueForm.category==="Supplies"?"What supply is low or missing?":"What is wrong?"} rows={3} style={{width:"100%",resize:"vertical",background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:8}}/>
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-              <span style={{fontSize:11,color:"#A0AEC3"}}>Include the location and issue details.</span>
+              <span style={{fontSize:11,color:"var(--muted)"}}>Include the location and issue details.</span>
               <div style={{flex:1}}/>
-              <button onClick={submitIssue} disabled={!issueForm.description.trim()} style={{background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#10131C",borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:!issueForm.description.trim()?0.5:1}}>Submit report</button>
+              <button onClick={submitIssue} disabled={!issueForm.description.trim()} style={{background:"linear-gradient(135deg,var(--gold),var(--gold-deep))",border:"none",color:"var(--bg)",borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer",opacity:!issueForm.description.trim()?0.5:1}}>Submit report</button>
             </div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {openIssues.length===0?<div className="hm-card" style={{textAlign:"center",color:"#A0AEC3",fontSize:13}}>No open house issues.</div>:openIssues.map(issue=>{
-              const color=issue.priority==="urgent"?"#EF4444":issue.priority==="high"?"#F97316":issue.priority==="medium"?"#F59E0B":"#3B82F6";
-              return<div key={issue.id} className="hm-card" style={{borderColor:`${color}55`}}>
+            {openIssues.length===0?<div className="hm-card" style={{textAlign:"center",color:"var(--muted)",fontSize:13}}>No open house issues.</div>:openIssues.map(issue=>{
+              const color=issue.priority==="urgent"?"var(--red)":issue.priority==="high"?"var(--orange)":issue.priority==="medium"?"var(--amber)":"var(--blue)";
+              return<div key={issue.id} className="hm-card" style={{borderColor:`${tint(color,33)}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
-                  <div style={{minWidth:0}}><div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color,fontWeight:700}}>{issue.priority?.toUpperCase()}</span><span style={{fontSize:11,color:"#A78BFA"}}>{issue.category}</span>{issue.location&&<span style={{fontSize:11,color:"#A0AEC3"}}>• {issue.location}</span>}</div><p style={{fontSize:14,color:"#F1F5F9",marginTop:6,lineHeight:1.45}}>{issue.description}</p><p style={{fontSize:10,color:"#A0AEC3",marginTop:6}}>Reported by {issue.reporter} • {new Date(issue.createdAt).toLocaleDateString()}</p></div>
+                  <div style={{minWidth:0}}><div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color,fontWeight:700}}>{issue.priority?.toUpperCase()}</span><span style={{fontSize:11,color:"var(--purple)"}}>{issue.category}</span>{issue.location&&<span style={{fontSize:11,color:"var(--muted)"}}>• {issue.location}</span>}</div><p style={{fontSize:14,color:"var(--ink)",marginTop:6,lineHeight:1.45}}>{issue.description}</p><p style={{fontSize:10,color:"var(--muted)",marginTop:6}}>Reported by {issue.reporter} • {new Date(issue.createdAt).toLocaleDateString()}</p></div>
                   {issue.photo&&<img src={issue.photo} alt="" style={{width:72,height:72,objectFit:"cover",borderRadius:8,flexShrink:0}}/>}
                 </div>
-                {adminUnlocked&&<div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}><SmallBtn onClick={()=>updateIssue(issue.id,{status:"in-progress"})} color="#3B82F6">In progress</SmallBtn><SmallBtn onClick={()=>updateIssue(issue.id,{status:"closed"})} color="#D4A843">Close</SmallBtn><SmallBtn onClick={()=>removeIssue(issue.id)} color="#EF4444">Delete</SmallBtn></div>}
+                {adminUnlocked&&<div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}><SmallBtn onClick={()=>updateIssue(issue.id,{status:"in-progress"})} color="var(--blue)">In progress</SmallBtn><SmallBtn onClick={()=>updateIssue(issue.id,{status:"closed"})} color="var(--gold)">Close</SmallBtn><SmallBtn onClick={()=>removeIssue(issue.id)} color="var(--red)">Delete</SmallBtn></div>}
               </div>;
             })}
           </div>
@@ -1639,43 +1702,43 @@ body{background:#10131c}
 
         {/* ══════ ROSTER ══════ */}
         {view==="roster"&&!selectedBrother&&<div className="fu">
-          <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4}}>Full Roster</h2>
-          <p style={{fontSize:12,color:"#A0AEC3",marginBottom:16}}>Tap a name to see their full schedule</p>
+          <h2 style={{fontSize:16,fontWeight:700,color:"var(--ink)",marginBottom:4}}>Full Roster</h2>
+          <p style={{fontSize:12,color:"var(--muted)",marginBottom:16}}>Tap a name to see their full schedule</p>
           <div className="roster-grid">
             {brothers.map((bObj,i)=>{const b=typeof bObj==="string"?{name:bObj,floor:"first"}:bObj;const s=stats[b.name]||{total:0,done:0,verified:0};const pct=s.total>0?Math.round(((s.done+(s.verified||0))/s.total)*100):0;const fc=AREA_META[b.floor]||{color:"#6B7280",label:"?"};return(
-              <div key={b.name} className="ch fu" onClick={()=>setSelectedBrother(b.name)} style={{background:"#1C2332",borderRadius:10,padding:"12px 16px",border:"1px solid #364258",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",animationDelay:`${i*.025}s`}}>
+              <div key={b.name} className="ch fu" onClick={()=>setSelectedBrother(b.name)} style={{background:"var(--card)",borderRadius:10,padding:"12px 16px",border:"1px solid var(--line)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",animationDelay:`${i*.025}s`}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${fc.color}44,${fc.color}22)`,border:`1px solid ${fc.color}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:fc.color}}>{b.name[0]}</div>
+                  <div style={{width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${tint(fc.color,27)},${tint(fc.color,13)})`,border:`1px solid ${tint(fc.color,33)}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:fc.color}}>{b.name[0]}</div>
                   <div>
-                    <div style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{b.name}</div>
+                    <div style={{fontSize:14,fontWeight:600,color:"var(--ink)"}}>{b.name}</div>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
-                      <span style={{fontSize:10,color:fc.color,background:`${fc.color}18`,padding:"1px 6px",borderRadius:4,fontWeight:600}}>{fc.label}</span>
-                      <span style={{fontSize:11,color:"#A0AEC3"}}>{s.done+(s.verified||0)}/{s.total}</span>
+                      <span style={{fontSize:10,color:fc.color,background:`${tint(fc.color,9)}`,padding:"1px 6px",borderRadius:4,fontWeight:600}}>{fc.label}</span>
+                      <span style={{fontSize:11,color:"var(--muted)"}}>{s.done+(s.verified||0)}/{s.total}</span>
                     </div>
                   </div>
                 </div>
-                <div style={{fontSize:15,fontWeight:700,fontFamily:"'Space Mono',monospace",color:pct>=80?"#D4A843":pct>=50?"#F59E0B":"#EF4444"}}>{pct}%</div>
+                <div style={{fontSize:15,fontWeight:700,fontFamily:"'Space Mono',monospace",color:pct>=80?"var(--gold)":pct>=50?"var(--amber)":"var(--red)"}}>{pct}%</div>
               </div>);})}
           </div>
         </div>}
 
         {view==="roster"&&selectedBrother&&<div className="fu">
-          <button onClick={()=>setSelectedBrother(null)} style={{background:"none",border:"none",color:"#D4A843",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0}}>← Back</button>
-          <div style={{background:"#1C2332",borderRadius:14,padding:20,border:"1px solid #364258",marginBottom:16}}>
-            <h2 style={{fontSize:20,fontWeight:700,color:"#F8FAFC",marginBottom:14}}>{selectedBrother}</h2>
+          <button onClick={()=>setSelectedBrother(null)} style={{background:"none",border:"none",color:"var(--gold)",fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:12,fontWeight:600,padding:0}}>← Back</button>
+          <div style={{background:"var(--card)",borderRadius:14,padding:20,border:"1px solid var(--line)",marginBottom:16}}>
+            <h2 style={{fontSize:20,fontWeight:700,color:"var(--ink)",marginBottom:14}}>{selectedBrother}</h2>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8}}>
-              {[{n:stats[selectedBrother]?.done||0,l:"Done",c:"#D4A843"},{n:stats[selectedBrother]?.verified||0,l:"Verified",c:"#3B82F6"},{n:stats[selectedBrother]?.missed||0,l:"Missed",c:"#EF4444"},{n:stats[selectedBrother]?.pending||0,l:"Pending",c:"#F59E0B"}].map(s=>
-                <div key={s.l} style={{textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace"}}>{s.n}</div><div style={{fontSize:10,color:"#A0AEC3",marginTop:2}}>{s.l}</div></div>
+              {[{n:stats[selectedBrother]?.done||0,l:"Done",c:"var(--gold)"},{n:stats[selectedBrother]?.verified||0,l:"Verified",c:"var(--blue)"},{n:stats[selectedBrother]?.missed||0,l:"Missed",c:"var(--red)"},{n:stats[selectedBrother]?.pending||0,l:"Pending",c:"var(--amber)"}].map(s=>
+                <div key={s.l} style={{textAlign:"center"}}><div style={{fontSize:22,fontWeight:700,color:s.c,fontFamily:"'Space Mono',monospace"}}>{s.n}</div><div style={{fontSize:10,color:"var(--muted)",marginTop:2}}>{s.l}</div></div>
               )}
             </div>
           </div>
-          <h3 style={{fontSize:13,fontWeight:700,color:"#94A3B8",marginBottom:10,letterSpacing:"0.05em"}}>WEEKLY ASSIGNMENTS</h3>
+          <h3 style={{fontSize:13,fontWeight:700,color:"var(--muted)",marginBottom:10,letterSpacing:"0.05em"}}>WEEKLY ASSIGNMENTS</h3>
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {weeks.map((week,wi)=>{const wj=assignments[week];if(!wj)return null;const myJobs=jobs.filter(j=>wj[j.id]?.assigned?.includes(selectedBrother));if(!myJobs.length)return null;return(
-              <div key={week} style={{background:wi===currentWeekIdx?"#1C2332":"#161C29",borderRadius:10,padding:"10px 14px",border:wi===currentWeekIdx?"1px solid #D4A843":"1px solid #1C2332"}}>
-                <div style={{fontSize:11,color:wi===currentWeekIdx?"#D4A843":"#A0AEC3",fontWeight:600,fontFamily:"'Space Mono',monospace",marginBottom:6}}>{week} {wi===currentWeekIdx&&"← Current"}</div>
+              <div key={week} style={{background:wi===currentWeekIdx?"var(--card)":"var(--field)",borderRadius:10,padding:"10px 14px",border:wi===currentWeekIdx?"1px solid var(--gold)":"1px solid var(--card)"}}>
+                <div style={{fontSize:11,color:wi===currentWeekIdx?"var(--gold)":"var(--muted)",fontWeight:600,fontFamily:"'Space Mono',monospace",marginBottom:6}}>{week} {wi===currentWeekIdx&&"← Current"}</div>
                 {myJobs.map(j=><div key={j.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:6,height:6,borderRadius:"50%",background:(AREA_META[j.area]||{color:"#6B7280"}).color}}/><span style={{fontSize:13,color:"#CBD5E1"}}>{j.name}</span></div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:6,height:6,borderRadius:"50%",background:(AREA_META[j.area]||{color:"#6B7280"}).color}}/><span style={{fontSize:13,color:"var(--ink-2)"}}>{j.name}</span></div>
                   <StatusBadge status={wj[j.id].status} onClick={()=>cycleStatus(week,j.id,adminUnlocked)}/>
                 </div>)}
               </div>);})}
@@ -1684,86 +1747,86 @@ body{background:#10131c}
 
         {/* ══════ LEADERBOARD ══════ */}
         {view==="leaderboard"&&<div className="fu">
-          <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:4}}>Accountability Board</h2>
-          <p style={{fontSize:12,color:"#A0AEC3",marginBottom:16}}>Weekly jobs ranked by completion</p>
+          <h2 style={{fontSize:16,fontWeight:700,color:"var(--ink)",marginBottom:4}}>Accountability Board</h2>
+          <p style={{fontSize:12,color:"var(--muted)",marginBottom:16}}>Weekly jobs ranked by completion</p>
           {brotherNames.map(b=>({name:b,...stats[b],pct:stats[b]?.total>0?((stats[b].done+(stats[b].verified||0))/stats[b].total)*100:0})).sort((a,b)=>b.pct-a.pct).map((b,i)=>{
             const medal=i<3?["🥇","🥈","🥉"][i]:null;
-            return<div key={b.name} className="fu" style={{display:"flex",alignItems:"center",gap:12,background:"#1C2332",borderRadius:10,padding:"12px 16px",border:i<3?`1px solid ${["#F59E0B","#94A3B8","#CD7F32"][i]}40`:"1px solid #364258",marginBottom:6,animationDelay:`${i*.03}s`}}>
-              <div style={{width:28,fontSize:medal?18:14,textAlign:"center",color:"#A0AEC3",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{medal||(i+1)}</div>
-              <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:"#F1F5F9"}}>{b.name}</div><div style={{display:"flex",gap:10,marginTop:4}}><span style={{fontSize:11,color:"#D4A843"}}>✓ {b.done+(b.verified||0)}</span><span style={{fontSize:11,color:"#EF4444"}}>✗ {b.missed}</span><span style={{fontSize:11,color:"#F59E0B"}}>○ {b.pending}</span></div></div>
-              <div style={{width:80}}><div style={{height:6,background:"#161C29",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",borderRadius:3,width:`${Math.round(b.pct)}%`,background:b.pct>=80?"#D4A843":b.pct>=50?"#F59E0B":"#EF4444"}}/></div><div style={{fontSize:11,textAlign:"right",marginTop:3,fontWeight:700,fontFamily:"'Space Mono',monospace",color:b.pct>=80?"#D4A843":b.pct>=50?"#F59E0B":"#EF4444"}}>{Math.round(b.pct)}%</div></div>
+            return<div key={b.name} className="fu" style={{display:"flex",alignItems:"center",gap:12,background:"var(--card)",borderRadius:10,padding:"12px 16px",border:i<3?`1px solid ${tint(["var(--amber)","var(--muted)","#CD7F32"][i],25)}`:"1px solid var(--line)",marginBottom:6,animationDelay:`${i*.03}s`}}>
+              <div style={{width:28,fontSize:medal?18:14,textAlign:"center",color:"var(--muted)",fontWeight:700,fontFamily:"'Space Mono',monospace"}}>{medal||(i+1)}</div>
+              <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:"var(--ink)"}}>{b.name}</div><div style={{display:"flex",gap:10,marginTop:4}}><span style={{fontSize:11,color:"var(--gold)"}}>✓ {b.done+(b.verified||0)}</span><span style={{fontSize:11,color:"var(--red)"}}>✗ {b.missed}</span><span style={{fontSize:11,color:"var(--amber)"}}>○ {b.pending}</span></div></div>
+              <div style={{width:80}}><div style={{height:6,background:"var(--field)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",borderRadius:3,width:`${Math.round(b.pct)}%`,background:b.pct>=80?"var(--gold)":b.pct>=50?"var(--amber)":"var(--red)"}}/></div><div style={{fontSize:11,textAlign:"right",marginTop:3,fontWeight:700,fontFamily:"'Space Mono',monospace",color:b.pct>=80?"var(--gold)":b.pct>=50?"var(--amber)":"var(--red)"}}>{Math.round(b.pct)}%</div></div>
             </div>;})}
-          <div style={{marginTop:20,background:"#1C2332",borderRadius:12,padding:16,border:"1px solid #364258"}}>
-            <h3 style={{fontSize:13,fontWeight:700,color:"#EF4444",marginBottom:8,letterSpacing:"0.05em"}}>FINE TRACKER</h3>
-            <p style={{fontSize:12,color:"#A0AEC3",lineHeight:1.6,marginBottom:12}}>Per Amendment 22: missed jobs = fines. 3+ misses flagged for Standards.</p>
-            {brotherNames.filter(b=>(stats[b]?.missed||0)>0).length===0?<div style={{fontSize:13,color:"#D4A843",textAlign:"center",padding:10}}>No missed jobs recorded.</div>
-            :brotherNames.filter(b=>(stats[b]?.missed||0)>0).sort((a,b)=>(stats[b]?.missed||0)-(stats[a]?.missed||0)).map(b=><div key={b} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #364258"}}><span style={{fontSize:13,color:"#CBD5E1"}}>{b}</span><span style={{fontSize:12,fontWeight:700,fontFamily:"'Space Mono',monospace",color:(stats[b]?.missed||0)>=3?"#EF4444":"#F59E0B"}}>{stats[b]?.missed||0} miss{(stats[b]?.missed||0)!==1?"es":""}{(stats[b]?.missed||0)>=3&&" ⚠️"}</span></div>)}
+          <div style={{marginTop:20,background:"var(--card)",borderRadius:12,padding:16,border:"1px solid var(--line)"}}>
+            <h3 style={{fontSize:13,fontWeight:700,color:"var(--red)",marginBottom:8,letterSpacing:"0.05em"}}>FINE TRACKER</h3>
+            <p style={{fontSize:12,color:"var(--muted)",lineHeight:1.6,marginBottom:12}}>Per Amendment 22: missed jobs = fines. 3+ misses flagged for Standards.</p>
+            {brotherNames.filter(b=>(stats[b]?.missed||0)>0).length===0?<div style={{fontSize:13,color:"var(--gold)",textAlign:"center",padding:10}}>No missed jobs recorded.</div>
+            :brotherNames.filter(b=>(stats[b]?.missed||0)>0).sort((a,b)=>(stats[b]?.missed||0)-(stats[a]?.missed||0)).map(b=><div key={b} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid var(--line)"}}><span style={{fontSize:13,color:"var(--ink-2)"}}>{b}</span><span style={{fontSize:12,fontWeight:700,fontFamily:"'Space Mono',monospace",color:(stats[b]?.missed||0)>=3?"var(--red)":"var(--amber)"}}>{stats[b]?.missed||0} miss{(stats[b]?.missed||0)!==1?"es":""}{(stats[b]?.missed||0)>=3&&" ⚠️"}</span></div>)}
           </div>
         </div>}
 
         {/* ══════ HOUSE MANAGER DASHBOARD ══════ */}
         {view==="manager"&&!adminUnlocked&&<div className="fu" style={{maxWidth:340,margin:"40px auto",textAlign:"center"}}>
-          <div style={{fontSize:34,marginBottom:12}}>🛠️</div><h2 style={{fontSize:18,color:"#F1F5F9",marginBottom:6}}>House Manager Dashboard</h2>
-          <p style={{fontSize:13,color:"#A0AEC3",marginBottom:18}}>Unlock to review work and manage the house.</p>
+          <div style={{fontSize:34,marginBottom:12}}>🛠️</div><h2 style={{fontSize:18,color:"var(--ink)",marginBottom:6}}>House Manager Dashboard</h2>
+          <p style={{fontSize:13,color:"var(--muted)",marginBottom:18}}>Unlock to review work and manage the house.</p>
           <Input type="email" value={adminEmail} onChange={v=>{setAdminEmail(v);setPwError(false);}} placeholder="Manager email" style={{textAlign:"center",marginBottom:8}}/>
           <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Manager password" style={{textAlign:"center",marginBottom:10}}/>
-          {pwError&&<p style={{fontSize:12,color:"#EF4444",marginBottom:10}}>Could not sign in. Check the manager account and password.</p>}
-          <button onClick={checkPassword} disabled={adminLoading} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#10131C",borderRadius:10,padding:"13px",fontWeight:700,cursor:"pointer",opacity:adminLoading?.6:1}}>{adminLoading?"Signing in...":"Unlock dashboard"}</button>
+          {pwError&&<p style={{fontSize:12,color:"var(--red)",marginBottom:10}}>Could not sign in. Check the manager account and password.</p>}
+          <button onClick={checkPassword} disabled={adminLoading} style={{width:"100%",background:"linear-gradient(135deg,var(--gold),var(--gold-deep))",border:"none",color:"var(--bg)",borderRadius:10,padding:"13px",fontWeight:700,cursor:"pointer",opacity:adminLoading?.6:1}}>{adminLoading?"Signing in...":"Unlock dashboard"}</button>
         </div>}
         {view==="manager"&&adminUnlocked&&<div className="fu">
           <OpsManager ops={ops} onNavigate={setView}/>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div><h2 style={{fontSize:19,fontWeight:700,color:"#F8FAFC"}}>House Manager</h2><p style={{fontSize:12,color:"#A0AEC3",marginTop:2}}>Reviews, issues, and assignments</p></div>
-            <button onClick={lockAdmin} style={{background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:7,padding:"6px 9px",fontSize:11,cursor:"pointer"}}>🔒 Lock</button>
+            <div><h2 style={{fontSize:19,fontWeight:700,color:"var(--ink)"}}>House Manager</h2><p style={{fontSize:12,color:"var(--muted)",marginTop:2}}>Reviews, issues, and assignments</p></div>
+            <button onClick={lockAdmin} style={{background:"var(--card)",border:"1px solid var(--line)",color:"var(--muted)",borderRadius:7,padding:"6px 9px",fontSize:11,cursor:"pointer"}}>🔒 Lock</button>
           </div>
           <div className="stat-grid" style={{marginBottom:14}}>
-            {[{n:verificationQueue.length,l:"Awaiting review",c:"#D4A843"},{n:overdueItems.length,l:"Overdue",c:"#EF4444"},{n:openIssues.length,l:"Open issues",c:"#F59E0B"},{n:supplyReports.length,l:"Supply alerts",c:"#8B5CF6"}].map(x=><div key={x.l} className="hm-card" style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:700,color:x.c,fontFamily:"'Space Mono',monospace"}}>{x.n}</div><div style={{fontSize:11,color:"#94A3B8",marginTop:3}}>{x.l}</div></div>)}
+            {[{n:verificationQueue.length,l:"Awaiting review",c:"var(--gold)"},{n:overdueItems.length,l:"Overdue",c:"var(--red)"},{n:openIssues.length,l:"Open issues",c:"var(--amber)"},{n:supplyReports.length,l:"Supply alerts",c:"var(--purple)"}].map(x=><div key={x.l} className="hm-card" style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:700,color:x.c,fontFamily:"'Space Mono',monospace"}}>{x.n}</div><div style={{fontSize:11,color:"var(--muted)",marginTop:3}}>{x.l}</div></div>)}
           </div>
           <div className="scroll-row" style={{marginBottom:18}}>
-            {[["Sunday","sunday","#8B5CF6"],["House issues","issues","#F59E0B"],["Setup","setup","#D4A843"],["Archive","archive","#3B82F6"]].map(([label,target,color])=><button key={label} onClick={()=>target==="archive"?archiveSemester():setView(target)} disabled={target==="archive"&&archiveBusy} style={{minWidth:112,background:`${color}18`,border:`1px solid ${color}50`,color,borderRadius:9,padding:"10px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{target==="archive"&&archiveBusy?"Saving...":label}</button>)}
+            {[["Sunday","sunday","var(--purple)"],["House issues","issues","var(--amber)"],["Setup","setup","var(--gold)"],["Archive","archive","var(--blue)"]].map(([label,target,color])=><button key={label} onClick={()=>target==="archive"?archiveSemester():setView(target)} disabled={target==="archive"&&archiveBusy} style={{minWidth:112,background:`${tint(color,9)}`,border:`1px solid ${tint(color,31)}`,color,borderRadius:9,padding:"10px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{target==="archive"&&archiveBusy?"Saving...":label}</button>)}
           </div>
 
           <section className="manager-brief"><div><div className="eyebrow">PENDING ACTIONS</div><h3>{verificationQueue.length?"Review "+verificationQueue.length+" submitted job"+(verificationQueue.length===1?"":"s"):openIssues.length?"Check open house issues":"Review upcoming assignments"}</h3><p>Includes all weeks.</p></div><button onClick={copyManagerBrief}>Copy house brief</button><p role="status">{briefNotice}</p></section>
           <div className="filter-pills">{[["all","All work"],["weekly","Weekly"],["sunday","Sunday"],["project","Projects"]].map(([key,label])=><button key={key} aria-pressed={reviewFilter===key} onClick={()=>setReviewFilter(key)}>{label}</button>)}</div>
           <h3 className="section-title">AWAITING VERIFICATION</h3>
           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20}}>
-            {verificationQueue.filter(t=>reviewFilter==="all"||t.type===reviewFilter).length===0?<div className="hm-card" style={{fontSize:13,color:"#A0AEC3",textAlign:"center"}}>No submissions awaiting review.</div>:verificationQueue.filter(t=>reviewFilter==="all"||t.type===reviewFilter).map((item,i)=><div key={`${item.type}-${item.week}-${item.id||i}`} className="hm-card">
+            {verificationQueue.filter(t=>reviewFilter==="all"||t.type===reviewFilter).length===0?<div className="hm-card" style={{fontSize:13,color:"var(--muted)",textAlign:"center"}}>No submissions awaiting review.</div>:verificationQueue.filter(t=>reviewFilter==="all"||t.type===reviewFilter).map((item,i)=><div key={`${item.type}-${item.week}-${item.id||i}`} className="hm-card">
               <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                <div style={{flex:1,minWidth:0}}><div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color:item.type==="sunday"?"#A78BFA":item.type==="project"?"#EC4899":"#D4A843",fontWeight:700}}>{item.type.toUpperCase()}</span><span style={{fontSize:10,color:"#A0AEC3"}}>{item.week}</span></div><div style={{fontSize:14,color:"#F1F5F9",fontWeight:600,marginTop:4}}>{item.name}</div><div style={{fontSize:11,color:"#94A3B8",marginTop:4}}>{item.entry?.proof?.submittedBy||item.entry?.completedBy||"Unknown"}{item.entry?.proof?.submittedAt&&` • ${new Date(item.entry.proof.submittedAt).toLocaleString()}`}</div>{item.entry?.proof?.note&&<p style={{fontSize:12,color:"#CBD5E1",marginTop:6,lineHeight:1.4}}>{item.entry.proof.note}</p>}{item.entry?.proof?.supplyStatus&&item.entry.proof.supplyStatus!=="ok"&&<p style={{fontSize:11,color:"#F59E0B",marginTop:5}}>Supply {item.entry.proof.supplyStatus}: {item.entry.proof.supplyNote||"No details"}</p>}</div>
+                <div style={{flex:1,minWidth:0}}><div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color:item.type==="sunday"?"var(--purple)":item.type==="project"?"var(--pink)":"var(--gold)",fontWeight:700}}>{item.type.toUpperCase()}</span><span style={{fontSize:10,color:"var(--muted)"}}>{item.week}</span></div><div style={{fontSize:14,color:"var(--ink)",fontWeight:600,marginTop:4}}>{item.name}</div><div style={{fontSize:11,color:"var(--muted)",marginTop:4}}>{item.entry?.proof?.submittedBy||item.entry?.completedBy||"Unknown"}{item.entry?.proof?.submittedAt&&` • ${new Date(item.entry.proof.submittedAt).toLocaleString()}`}</div>{item.entry?.proof?.note&&<p style={{fontSize:12,color:"var(--ink-2)",marginTop:6,lineHeight:1.4}}>{item.entry.proof.note}</p>}{item.entry?.proof?.supplyStatus&&item.entry.proof.supplyStatus!=="ok"&&<p style={{fontSize:11,color:"var(--amber)",marginTop:5}}>Supply {item.entry.proof.supplyStatus}: {item.entry.proof.supplyNote||"No details"}</p>}</div>
                 {item.entry?.proof?.photo&&<img src={item.entry.proof.photo} alt="Completion proof" style={{width:76,height:76,objectFit:"cover",borderRadius:8,flexShrink:0}}/>}
               </div>
-              <div style={{display:"flex",gap:8,marginTop:10}}><button onClick={()=>reviewItem(item,true)} style={{flex:1,background:"#D4A84320",border:"1px solid #D4A84360",color:"#D4A843",borderRadius:7,padding:"8px",fontWeight:700,cursor:"pointer"}}>Verify</button><button onClick={()=>reviewItem(item,false)} style={{flex:1,background:"#EF444418",border:"1px solid #EF444450",color:"#F87171",borderRadius:7,padding:"8px",fontWeight:700,cursor:"pointer"}}>Reject</button></div>
+              <div style={{display:"flex",gap:8,marginTop:10}}><button onClick={()=>reviewItem(item,true)} style={{flex:1,background:"color-mix(in srgb, var(--gold) 13%, transparent)",border:"1px solid color-mix(in srgb, var(--gold) 38%, transparent)",color:"var(--gold)",borderRadius:7,padding:"8px",fontWeight:700,cursor:"pointer"}}>Verify</button><button onClick={()=>reviewItem(item,false)} style={{flex:1,background:"color-mix(in srgb, var(--red) 9%, transparent)",border:"1px solid color-mix(in srgb, var(--red) 31%, transparent)",color:"var(--red)",borderRadius:7,padding:"8px",fontWeight:700,cursor:"pointer"}}>Reject</button></div>
             </div>)}
           </div>
 
           <div className="manager-grid">
             <section className="hm-card hm-wide">
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:9}}><h3 style={{fontSize:12,color:"#EF4444",letterSpacing:".08em"}}>OVERDUE ({overdueItems.length})</h3>{overdueItems.length>0&&<SmallBtn onClick={clearOverdueBacklog} color="#9CA3AF">Clear earlier weeks</SmallBtn>}</div>
-              {overdueItems.length===0?<p style={{fontSize:12,color:"#A0AEC3"}}>No overdue assignments.</p>:overdueItems.slice(0,12).map(item=><div key={`${item.type}-${item.week}-${item.id}`} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 0",borderBottom:"1px solid #364258"}}><div><div style={{fontSize:12,color:"#E2E8F0"}}>{item.name}</div><div style={{fontSize:10,color:"#A0AEC3"}}>{item.week} • {(item.assigned||[]).join(", ")}</div></div><span style={{fontSize:10,color:"#EF4444",whiteSpace:"nowrap"}}>{formatDue(item.due)}</span></div>)}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:9}}><h3 style={{fontSize:12,color:"var(--red)",letterSpacing:".08em"}}>OVERDUE ({overdueItems.length})</h3>{overdueItems.length>0&&<SmallBtn onClick={clearOverdueBacklog} color="var(--muted)">Clear earlier weeks</SmallBtn>}</div>
+              {overdueItems.length===0?<p style={{fontSize:12,color:"var(--muted)"}}>No overdue assignments.</p>:overdueItems.slice(0,12).map(item=><div key={`${item.type}-${item.week}-${item.id}`} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"7px 0",borderBottom:"1px solid var(--line)"}}><div><div style={{fontSize:12,color:"var(--ink)"}}>{item.name}</div><div style={{fontSize:10,color:"var(--muted)"}}>{item.week} • {(item.assigned||[]).join(", ")}</div></div><span style={{fontSize:10,color:"var(--red)",whiteSpace:"nowrap"}}>{formatDue(item.due)}</span></div>)}
             </section>
             <section className="hm-card">
-              <h3 style={{fontSize:12,color:"#F59E0B",letterSpacing:".08em",marginBottom:8}}>OPEN ISSUES</h3>
-              {openIssues.length===0?<p style={{fontSize:12,color:"#A0AEC3"}}>None</p>:openIssues.slice(0,5).map(x=><button key={x.id} onClick={()=>setView("issues")} style={{display:"block",width:"100%",background:"none",border:"none",borderBottom:"1px solid #364258",padding:"7px 0",textAlign:"left",color:"#CBD5E1",fontSize:12,cursor:"pointer"}}><span style={{color:x.priority==="urgent"?"#EF4444":"#F59E0B",fontSize:9,fontWeight:700}}>{x.priority?.toUpperCase()} </span>{x.description}</button>)}
+              <h3 style={{fontSize:12,color:"var(--amber)",letterSpacing:".08em",marginBottom:8}}>OPEN ISSUES</h3>
+              {openIssues.length===0?<p style={{fontSize:12,color:"var(--muted)"}}>None</p>:openIssues.slice(0,5).map(x=><button key={x.id} onClick={()=>setView("issues")} style={{display:"block",width:"100%",background:"none",border:"none",borderBottom:"1px solid var(--line)",padding:"7px 0",textAlign:"left",color:"var(--ink-2)",fontSize:12,cursor:"pointer"}}><span style={{color:x.priority==="urgent"?"var(--red)":"var(--amber)",fontSize:9,fontWeight:700}}>{x.priority?.toUpperCase()} </span>{x.description}</button>)}
             </section>
             <section className="hm-card">
-              <h3 style={{fontSize:12,color:"#8B5CF6",letterSpacing:".08em",marginBottom:8}}>SUPPLIES</h3><SmallBtn onClick={()=>setView("supplies")}>Open supply list</SmallBtn>
-              {supplyReports.length===0?<p style={{fontSize:12,color:"#A0AEC3"}}>No shortages reported.</p>:supplyReports.slice(0,5).map((x,i)=><div key={i} style={{fontSize:12,color:"#CBD5E1",padding:"6px 0",borderBottom:"1px solid #364258"}}><span style={{color:"#F59E0B"}}>{x.severity.toUpperCase()}</span> • {x.item}</div>)}
+              <h3 style={{fontSize:12,color:"var(--purple)",letterSpacing:".08em",marginBottom:8}}>SUPPLIES</h3><SmallBtn onClick={()=>setView("supplies")}>Open supply list</SmallBtn>
+              {supplyReports.length===0?<p style={{fontSize:12,color:"var(--muted)"}}>No shortages reported.</p>:supplyReports.slice(0,5).map((x,i)=><div key={i} style={{fontSize:12,color:"var(--ink-2)",padding:"6px 0",borderBottom:"1px solid var(--line)"}}><span style={{color:"var(--amber)"}}>{x.severity.toUpperCase()}</span> • {x.item}</div>)}
             </section>
             <section className="hm-card hm-wide">
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><h3 style={{fontSize:12,color:"#F59E0B",letterSpacing:".08em"}}>KITCHEN ROTATION</h3><span style={{fontSize:11,color:"#94A3B8"}}>{kitchenStats.served.length}/{kitchenStats.all.length} served</span></div>
-              <div style={{height:7,background:"#161C29",borderRadius:5,overflow:"hidden",marginBottom:10}}><div style={{height:"100%",width:`${kitchenStats.all.length?Math.round(kitchenStats.served.length/kitchenStats.all.length*100):0}%`,background:"linear-gradient(90deg,#F59E0B,#D4A843)"}}/></div>
-              <div style={{fontSize:11,color:"#A0AEC3",marginBottom:5}}>Still waiting:</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{kitchenStats.waiting.length?kitchenStats.waiting.map(n=><span key={n} style={{fontSize:10,color:"#CBD5E1",background:"#161C29",borderRadius:5,padding:"3px 6px"}}>{n}</span>):<span style={{fontSize:11,color:"#D4A843"}}>Everyone has served — next cycle can begin.</span>}</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><h3 style={{fontSize:12,color:"var(--amber)",letterSpacing:".08em"}}>KITCHEN ROTATION</h3><span style={{fontSize:11,color:"var(--muted)"}}>{kitchenStats.served.length}/{kitchenStats.all.length} served</span></div>
+              <div style={{height:7,background:"var(--field)",borderRadius:5,overflow:"hidden",marginBottom:10}}><div style={{height:"100%",width:`${kitchenStats.all.length?Math.round(kitchenStats.served.length/kitchenStats.all.length*100):0}%`,background:"linear-gradient(90deg,var(--amber),var(--gold))"}}/></div>
+              <div style={{fontSize:11,color:"var(--muted)",marginBottom:5}}>Still waiting:</div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{kitchenStats.waiting.length?kitchenStats.waiting.map(n=><span key={n} style={{fontSize:10,color:"var(--ink-2)",background:"var(--field)",borderRadius:5,padding:"3px 6px"}}>{n}</span>):<span style={{fontSize:11,color:"var(--gold)"}}>Everyone has served — next cycle can begin.</span>}</div>
             </section>
             <section className="hm-card hm-wide">
-              <h3 style={{fontSize:12,color:"#3B82F6",letterSpacing:".08em",marginBottom:10}}>FAIRNESS</h3>
-              <div style={{overflowX:"auto"}}>{fairnessRows.map(row=><div key={row.name} style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,alignItems:"center",padding:"7px 0",borderBottom:"1px solid #364258",minWidth:350}}><span style={{fontSize:12,color:"#E2E8F0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</span><span title="Weekly" style={{fontSize:11,color:"#94A3B8",textAlign:"center"}}>{row.total}</span><span title="Sunday" style={{fontSize:11,color:"#A78BFA",textAlign:"center"}}>{row.sunday}</span><span title="Kitchen" style={{fontSize:11,color:"#F59E0B",textAlign:"center"}}>{row.kitchen}</span><span title="Bathrooms" style={{fontSize:11,color:"#06B6D4",textAlign:"center"}}>{row.bathrooms}</span><span title="Project points" style={{fontSize:11,color:"#EC4899",textAlign:"center"}}>{row.projectPoints}</span></div>)}</div>
-              <div style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,marginTop:7,fontSize:9,color:"#A0AEC3"}}><span></span><span>WK</span><span>SUN</span><span>KIT</span><span>BATH</span><span>PTS</span></div>
+              <h3 style={{fontSize:12,color:"var(--blue)",letterSpacing:".08em",marginBottom:10}}>FAIRNESS</h3>
+              <div style={{overflowX:"auto"}}>{fairnessRows.map(row=><div key={row.name} style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,alignItems:"center",padding:"7px 0",borderBottom:"1px solid var(--line)",minWidth:350}}><span style={{fontSize:12,color:"var(--ink)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</span><span title="Weekly" style={{fontSize:11,color:"var(--muted)",textAlign:"center"}}>{row.total}</span><span title="Sunday" style={{fontSize:11,color:"var(--purple)",textAlign:"center"}}>{row.sunday}</span><span title="Kitchen" style={{fontSize:11,color:"var(--amber)",textAlign:"center"}}>{row.kitchen}</span><span title="Bathrooms" style={{fontSize:11,color:"var(--cyan)",textAlign:"center"}}>{row.bathrooms}</span><span title="Project points" style={{fontSize:11,color:"var(--pink)",textAlign:"center"}}>{row.projectPoints}</span></div>)}</div>
+              <div style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,marginTop:7,fontSize:9,color:"var(--muted)"}}><span></span><span>WK</span><span>SUN</span><span>KIT</span><span>BATH</span><span>PTS</span></div>
             </section>
             <section className="hm-card hm-wide">
-              <h3 style={{fontSize:12,color:"#94A3B8",letterSpacing:".08em",marginBottom:10}}>DEADLINES</h3>
+              <h3 style={{fontSize:12,color:"var(--muted)",letterSpacing:".08em",marginBottom:10}}>DEADLINES</h3>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                <label style={{fontSize:11,color:"#94A3B8"}}>Weekly due<select value={houseSettings.weeklyDueDay} onChange={e=>saveHouseSettings({...houseSettings,weeklyDueDay:Number(e.target.value)})} style={{display:"block",width:"100%",marginTop:4,background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:7,padding:"8px"}}>{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input type="time" value={houseSettings.weeklyDueTime} onChange={e=>saveHouseSettings({...houseSettings,weeklyDueTime:e.target.value})} style={{display:"block",width:"100%",marginTop:5,background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:7,padding:"8px"}}/></label>
-                <label style={{fontSize:11,color:"#94A3B8"}}>Sunday due<select value={houseSettings.sundayDueDay} onChange={e=>saveHouseSettings({...houseSettings,sundayDueDay:Number(e.target.value)})} style={{display:"block",width:"100%",marginTop:4,background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:7,padding:"8px"}}>{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input type="time" value={houseSettings.sundayDueTime} onChange={e=>saveHouseSettings({...houseSettings,sundayDueTime:e.target.value})} style={{display:"block",width:"100%",marginTop:5,background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:7,padding:"8px"}}/></label>
+                <label style={{fontSize:11,color:"var(--muted)"}}>Weekly due<select value={houseSettings.weeklyDueDay} onChange={e=>saveHouseSettings({...houseSettings,weeklyDueDay:Number(e.target.value)})} style={{display:"block",width:"100%",marginTop:4,background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:7,padding:"8px"}}>{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input type="time" value={houseSettings.weeklyDueTime} onChange={e=>saveHouseSettings({...houseSettings,weeklyDueTime:e.target.value})} style={{display:"block",width:"100%",marginTop:5,background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:7,padding:"8px"}}/></label>
+                <label style={{fontSize:11,color:"var(--muted)"}}>Sunday due<select value={houseSettings.sundayDueDay} onChange={e=>saveHouseSettings({...houseSettings,sundayDueDay:Number(e.target.value)})} style={{display:"block",width:"100%",marginTop:4,background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:7,padding:"8px"}}>{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d,i)=><option key={d} value={i}>{d}</option>)}</select><input type="time" value={houseSettings.sundayDueTime} onChange={e=>saveHouseSettings({...houseSettings,sundayDueTime:e.target.value})} style={{display:"block",width:"100%",marginTop:5,background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:7,padding:"8px"}}/></label>
               </div>
             </section>
           </div>
@@ -1771,26 +1834,26 @@ body{background:#10131c}
 
         {/* ══════ SETUP ══════ */}
         {view==="setup"&&!adminUnlocked&&<div className="fu" style={{maxWidth:340,margin:"40px auto",textAlign:"center"}}>
-          <div style={{width:64,height:64,borderRadius:16,background:"#F59E0B18",border:"1px solid #F59E0B40",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",fontSize:28}}>🔒</div>
-          <h2 style={{fontSize:18,fontWeight:700,color:"#F1F5F9",marginBottom:6}}>House Manager Access</h2>
-          <p style={{fontSize:13,color:"#A0AEC3",marginBottom:24}}>Enter the admin password to edit settings.</p>
-          <Input type="email" value={adminEmail} onChange={v=>{setAdminEmail(v);setPwError(false);}} placeholder="Manager email" style={{textAlign:"center",marginBottom:8,borderColor:pwError?"#EF4444":"#364258"}}/>
-          <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Manager password" style={{textAlign:"center",fontSize:16,letterSpacing:"0.1em",marginBottom:12,borderColor:pwError?"#EF4444":"#364258"}}/>
-          {pwError&&<p style={{fontSize:12,color:"#EF4444",marginBottom:12}}>Could not sign in. Check the manager account and password.</p>}
-          <button onClick={checkPassword} disabled={adminLoading} style={{width:"100%",background:"linear-gradient(135deg,#F59E0B,#D97706)",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:adminLoading?.6:1}}>{adminLoading?"Signing in...":"Unlock"}</button>
+          <div style={{width:64,height:64,borderRadius:16,background:"color-mix(in srgb, var(--amber) 9%, transparent)",border:"1px solid color-mix(in srgb, var(--amber) 25%, transparent)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",fontSize:28}}>🔒</div>
+          <h2 style={{fontSize:18,fontWeight:700,color:"var(--ink)",marginBottom:6}}>House Manager Access</h2>
+          <p style={{fontSize:13,color:"var(--muted)",marginBottom:24}}>Enter the admin password to edit settings.</p>
+          <Input type="email" value={adminEmail} onChange={v=>{setAdminEmail(v);setPwError(false);}} placeholder="Manager email" style={{textAlign:"center",marginBottom:8,borderColor:pwError?"var(--red)":"var(--line)"}}/>
+          <Input type="password" value={pwInput} onChange={v=>{setPwInput(v);setPwError(false);}} placeholder="Manager password" style={{textAlign:"center",fontSize:16,letterSpacing:"0.1em",marginBottom:12,borderColor:pwError?"var(--red)":"var(--line)"}}/>
+          {pwError&&<p style={{fontSize:12,color:"var(--red)",marginBottom:12}}>Could not sign in. Check the manager account and password.</p>}
+          <button onClick={checkPassword} disabled={adminLoading} style={{width:"100%",background:"linear-gradient(135deg,var(--amber),var(--amber-deep))",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:adminLoading?.6:1}}>{adminLoading?"Signing in...":"Unlock"}</button>
         </div>}
 
         {view==="setup"&&adminUnlocked&&<div className="fu">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <h2 style={{fontSize:16,fontWeight:700,color:"#F1F5F9"}}>Weekly Setup</h2>
-            <button onClick={lockAdmin} style={{background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🔒 Lock</button>
+            <h2 style={{fontSize:16,fontWeight:700,color:"var(--ink)"}}>Weekly Setup</h2>
+            <button onClick={lockAdmin} style={{background:"var(--card)",border:"1px solid var(--line)",color:"var(--muted)",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🔒 Lock</button>
           </div>
-          <div style={{marginBottom:20}}><label style={{fontSize:12,color:"#94A3B8",fontWeight:600,display:"block",marginBottom:6}}>SEMESTER NAME</label><Input value={semesterName} onChange={setSemesterName} placeholder="e.g. Spring 2027"/></div>
+          <div style={{marginBottom:20}}><label style={{fontSize:12,color:"var(--muted)",fontWeight:600,display:"block",marginBottom:6}}>SEMESTER NAME</label><Input value={semesterName} onChange={setSemesterName} placeholder="e.g. Spring 2027"/></div>
           <div style={{display:"flex",gap:6,marginBottom:16}}>
-            {[{key:"brothers",label:`Brothers (${brothers.length})`},{key:"jobs",label:`Jobs (${jobs.length})`},{key:"weeks",label:`Weeks (${weeks.length})`}].map(t=><button key={t.key} onClick={()=>setSetupTab(t.key)} style={{flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:setupTab===t.key?"#F59E0B18":"#1C2332",border:`1px solid ${setupTab===t.key?"#F59E0B":"#364258"}`,color:setupTab===t.key?"#F59E0B":"#94A3B8"}}>{t.label}</button>)}
+            {[{key:"brothers",label:`Brothers (${brothers.length})`},{key:"jobs",label:`Jobs (${jobs.length})`},{key:"weeks",label:`Weeks (${weeks.length})`}].map(t=><button key={t.key} onClick={()=>setSetupTab(t.key)} style={{flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:setupTab===t.key?"color-mix(in srgb, var(--amber) 9%, transparent)":"var(--card)",border:`1px solid ${setupTab===t.key?"var(--amber)":"var(--line)"}`,color:setupTab===t.key?"var(--amber)":"var(--muted)"}}>{t.label}</button>)}
           </div>
           {setupTab==="brothers"&&<div>
-            <p style={{fontSize:12,color:"#A0AEC3",marginBottom:12,lineHeight:1.5}}>Add brothers who live in house from the pin roster. Assign their floor for job rotation.</p>
+            <p style={{fontSize:12,color:"var(--muted)",marginBottom:12,lineHeight:1.5}}>Add brothers who live in house from the pin roster. Assign their floor for job rotation.</p>
             {(()=>{
               const allPinNames=[...new Set([...evenPins,...oddPins])].sort();
               const alreadyAdded=new Set(brotherNames);
@@ -1801,111 +1864,111 @@ body{background:#10131c}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   <div style={{flex:1,minWidth:140,position:"relative"}}>
                     <Input value={editName} onChange={setEditName} placeholder="Search pin roster to add..." style={{}}/>
-                    {query&&filtered.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1C2332",border:"1px solid #364258",borderRadius:"0 0 8px 8px",maxHeight:180,overflowY:"auto",zIndex:10}}>
-                      {filtered.slice(0,10).map(name=><button key={name} onClick={()=>{setBrothers([...brothers,{name,floor:editFloor}]);setEditName("");}} style={{display:"flex",justifyContent:"space-between",width:"100%",padding:"8px 12px",background:"none",border:"none",borderBottom:"1px solid #161C29",color:"#E2E8F0",fontSize:13,textAlign:"left",cursor:"pointer",fontFamily:"inherit",alignItems:"center"}}
-                        onMouseEnter={e=>e.target.style.background="#364258"} onMouseLeave={e=>e.target.style.background="none"}>
+                    {query&&filtered.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"var(--card)",border:"1px solid var(--line)",borderRadius:"0 0 8px 8px",maxHeight:180,overflowY:"auto",zIndex:10}}>
+                      {filtered.slice(0,10).map(name=><button key={name} onClick={()=>{setBrothers([...brothers,{name,floor:editFloor}]);setEditName("");}} style={{display:"flex",justifyContent:"space-between",width:"100%",padding:"8px 12px",background:"none",border:"none",borderBottom:"1px solid var(--field)",color:"var(--ink)",fontSize:13,textAlign:"left",cursor:"pointer",fontFamily:"inherit",alignItems:"center"}}
+                        onMouseEnter={e=>e.target.style.background="var(--line)"} onMouseLeave={e=>e.target.style.background="none"}>
                         <span>{name}</span>
-                        <span style={{fontSize:10,color:evenPins.includes(name)?"#8B5CF6":"#06B6D4"}}>{evenPins.includes(name)?"EVEN":"ODD"}</span>
+                        <span style={{fontSize:10,color:evenPins.includes(name)?"var(--purple)":"var(--cyan)"}}>{evenPins.includes(name)?"EVEN":"ODD"}</span>
                       </button>)}
-                      {!alreadyAdded.has(editName.trim())&&<button onClick={()=>{setBrothers([...brothers,{name:editName.trim(),floor:editFloor}]);setEditName("");}} style={{display:"flex",justifyContent:"space-between",width:"100%",padding:"8px 12px",background:"none",border:"none",color:"#F59E0B",fontSize:12,textAlign:"left",cursor:"pointer",fontFamily:"inherit",alignItems:"center"}}
-                        onMouseEnter={e=>e.target.style.background="#364258"} onMouseLeave={e=>e.target.style.background="none"}>
+                      {!alreadyAdded.has(editName.trim())&&<button onClick={()=>{setBrothers([...brothers,{name:editName.trim(),floor:editFloor}]);setEditName("");}} style={{display:"flex",justifyContent:"space-between",width:"100%",padding:"8px 12px",background:"none",border:"none",color:"var(--amber)",fontSize:12,textAlign:"left",cursor:"pointer",fontFamily:"inherit",alignItems:"center"}}
+                        onMouseEnter={e=>e.target.style.background="var(--line)"} onMouseLeave={e=>e.target.style.background="none"}>
                         <span>+ Add "{editName.trim()}" manually</span>
                       </button>}
                     </div>}
-                    {query&&filtered.length===0&&!alreadyAdded.has(editName.trim())&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#1C2332",border:"1px solid #364258",borderRadius:"0 0 8px 8px",zIndex:10}}>
-                      <button onClick={()=>{setBrothers([...brothers,{name:editName.trim(),floor:editFloor}]);setEditName("");}} style={{display:"block",width:"100%",padding:"10px 12px",background:"none",border:"none",color:"#F59E0B",fontSize:13,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}
-                        onMouseEnter={e=>e.target.style.background="#364258"} onMouseLeave={e=>e.target.style.background="none"}>+ Add "{editName.trim()}" manually</button>
+                    {query&&filtered.length===0&&!alreadyAdded.has(editName.trim())&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"var(--card)",border:"1px solid var(--line)",borderRadius:"0 0 8px 8px",zIndex:10}}>
+                      <button onClick={()=>{setBrothers([...brothers,{name:editName.trim(),floor:editFloor}]);setEditName("");}} style={{display:"block",width:"100%",padding:"10px 12px",background:"none",border:"none",color:"var(--amber)",fontSize:13,textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}
+                        onMouseEnter={e=>e.target.style.background="var(--line)"} onMouseLeave={e=>e.target.style.background="none"}>+ Add "{editName.trim()}" manually</button>
                     </div>}
                   </div>
-                  <select value={editFloor} onChange={e=>setEditFloor(e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 10px",fontSize:13,fontFamily:"inherit"}}>
+                  <select value={editFloor} onChange={e=>setEditFloor(e.target.value)} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:8,padding:"10px 28px 10px 10px",fontSize:13,fontFamily:"inherit"}}>
                     <option value="basement">Basement</option><option value="first">1st Floor</option><option value="second">2nd Floor</option><option value="third">3rd Floor</option>
                   </select>
                 </div>
-                {available.length===0&&<p style={{fontSize:11,color:"#A0AEC3",marginTop:6}}>All brothers from pin roster have been added.</p>}
+                {available.length===0&&<p style={{fontSize:11,color:"var(--muted)",marginTop:6}}>All brothers from pin roster have been added.</p>}
               </div>;
             })()}
             <div style={{display:"flex",flexDirection:"column",gap:4}}>
               {brothers.map((b,i)=>{const bo=typeof b==="string"?{name:b,floor:"first"}:b;const fc=AREA_META[bo.floor]||{color:"#6B7280",label:"?"};const pinGroup=evenPins.includes(bo.name)?"EVEN":oddPins.includes(bo.name)?"ODD":"";return(
-                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1C2332",borderRadius:8,padding:"8px 12px",border:"1px solid #364258"}}>
+                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--card)",borderRadius:8,padding:"8px 12px",border:"1px solid var(--line)"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:fc.color}}/>
-                    <span style={{fontSize:14,color:"#CBD5E1"}}>{bo.name}</span>
-                    <span style={{fontSize:10,color:fc.color,background:`${fc.color}18`,padding:"1px 6px",borderRadius:4,fontWeight:600}}>{fc.label}</span>
-                    {pinGroup&&<span style={{fontSize:9,color:pinGroup==="EVEN"?"#8B5CF6":"#06B6D4"}}>{pinGroup}</span>}
+                    <span style={{fontSize:14,color:"var(--ink-2)"}}>{bo.name}</span>
+                    <span style={{fontSize:10,color:fc.color,background:`${tint(fc.color,9)}`,padding:"1px 6px",borderRadius:4,fontWeight:600}}>{fc.label}</span>
+                    {pinGroup&&<span style={{fontSize:9,color:pinGroup==="EVEN"?"var(--purple)":"var(--cyan)"}}>{pinGroup}</span>}
                   </div>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    <select value={bo.floor} onChange={e=>{const n=[...brothers];n[i]=typeof b==="string"?{name:b,floor:e.target.value}:{...b,floor:e.target.value};setBrothers(n);}} style={{background:"#161C29",border:"1px solid #364258",color:"#94A3B8",borderRadius:4,padding:"2px 20px 2px 6px",fontSize:11,fontFamily:"inherit"}}>
+                    <select value={bo.floor} onChange={e=>{const n=[...brothers];n[i]=typeof b==="string"?{name:b,floor:e.target.value}:{...b,floor:e.target.value};setBrothers(n);}} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--muted)",borderRadius:4,padding:"2px 20px 2px 6px",fontSize:11,fontFamily:"inherit"}}>
                       <option value="basement">BSMT</option><option value="first">1F</option><option value="second">2F</option><option value="third">3F</option>
                     </select>
-                    <button onClick={()=>setBrothers(brothers.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
+                    <button onClick={()=>setBrothers(brothers.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:18,padding:"0 4px",minWidth:38,minHeight:38,lineHeight:1}}>×</button>
                   </div>
                 </div>);})}
             </div>
           </div>}
           {setupTab==="jobs"&&<div>
             <div className="hm-card" style={{marginBottom:12}}>
-              <h3 style={{fontSize:13,color:"#D4A843",marginBottom:5}}>Chairs</h3>
-              <p style={{fontSize:11,color:"#A0AEC3",lineHeight:1.5,marginBottom:10}}>A chair does their job every week and is never given another one. Changes apply from the current week.</p>
-              {jobs.filter(j=>/kitchen|library/i.test(j.name)).map(j=><label key={j.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,fontSize:12,color:"#CBD5E1",marginBottom:6}}>{j.name} chair
-                <select value={chairs[j.id]||""} onChange={e=>setChair(j.id,e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 8px",fontSize:12,fontFamily:"inherit",minWidth:150}}>
+              <h3 style={{fontSize:13,color:"var(--gold)",marginBottom:5}}>Chairs</h3>
+              <p style={{fontSize:11,color:"var(--muted)",lineHeight:1.5,marginBottom:10}}>A chair does their job every week and is never given another one. Changes apply from the current week.</p>
+              {jobs.filter(j=>/kitchen|library/i.test(j.name)).map(j=><label key={j.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,fontSize:12,color:"var(--ink-2)",marginBottom:6}}>{j.name} chair
+                <select value={chairs[j.id]||""} onChange={e=>setChair(j.id,e.target.value)} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:6,padding:"6px 24px 6px 8px",fontSize:12,fontFamily:"inherit",minWidth:150}}>
                   <option value="">No chair (normal rotation)</option>{brotherNames.map(n=><option key={n} value={n}>{n}</option>)}
                 </select></label>)}
             </div>
             <div className="hm-card" style={{marginBottom:12}}>
-              <h3 style={{fontSize:13,color:"#D4A843",marginBottom:5}}>Manager assignments</h3>
-              <p style={{fontSize:11,color:"#A0AEC3",lineHeight:1.5,marginBottom:8}}>Set these with ✏️ on a job in the weekly view. Reshuffles keep them. Removing one stops it from being kept on the next reshuffle.</p>
-              {locks.filter(l=>weeks.indexOf(l.end)<0||weeks.indexOf(l.end)>=currentWeekIdx).length===0?<p style={{fontSize:11,color:"#A0AEC3"}}>None active.</p>:locks.filter(l=>weeks.indexOf(l.end)<0||weeks.indexOf(l.end)>=currentWeekIdx).map(l=><div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid #364258"}}>
-                <span style={{fontSize:12,color:"#CBD5E1"}}>{jobs.find(j=>j.id===l.jobId)?.name||l.jobId}: {(l.names||[]).join(", ")} <span style={{color:"#A0AEC3"}}>· {l.start===l.end?l.start:`${l.start} to ${l.end}`}</span></span>
-                <SmallBtn onClick={()=>removeLock(l.id)} color="#EF4444">Remove</SmallBtn></div>)}
+              <h3 style={{fontSize:13,color:"var(--gold)",marginBottom:5}}>Manager assignments</h3>
+              <p style={{fontSize:11,color:"var(--muted)",lineHeight:1.5,marginBottom:8}}>Set these with ✏️ on a job in the weekly view. Reshuffles keep them. Removing one stops it from being kept on the next reshuffle.</p>
+              {locks.filter(l=>weeks.indexOf(l.end)<0||weeks.indexOf(l.end)>=currentWeekIdx).length===0?<p style={{fontSize:11,color:"var(--muted)"}}>None active.</p>:locks.filter(l=>weeks.indexOf(l.end)<0||weeks.indexOf(l.end)>=currentWeekIdx).map(l=><div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"6px 0",borderTop:"1px solid var(--line)"}}>
+                <span style={{fontSize:12,color:"var(--ink-2)"}}>{jobs.find(j=>j.id===l.jobId)?.name||l.jobId}: {(l.names||[]).join(", ")} <span style={{color:"var(--muted)"}}>· {l.start===l.end?l.start:`${l.start} to ${l.end}`}</span></span>
+                <SmallBtn onClick={()=>removeLock(l.id)} color="var(--red)">Remove</SmallBtn></div>)}
             </div>
-            <div style={{background:"#1C2332",borderRadius:10,padding:14,border:"1px solid #364258",marginBottom:12}}>
-              <div style={{display:"flex",gap:8,marginBottom:8}}><Input value={editJobName} onChange={setEditJobName} placeholder="Job name..." style={{flex:1}}/><select value={editJobArea} onChange={e=>setEditJobArea(e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 28px 10px 14px",fontSize:13,fontFamily:"inherit"}}>{AREA_KEYS.map(k=><option key={k} value={k}>{AREA_META[k].label}</option>)}</select></div>
+            <div style={{background:"var(--card)",borderRadius:10,padding:14,border:"1px solid var(--line)",marginBottom:12}}>
+              <div style={{display:"flex",gap:8,marginBottom:8}}><Input value={editJobName} onChange={setEditJobName} placeholder="Job name..." style={{flex:1}}/><select value={editJobArea} onChange={e=>setEditJobArea(e.target.value)} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:8,padding:"10px 28px 10px 14px",fontSize:13,fontFamily:"inherit"}}>{AREA_KEYS.map(k=><option key={k} value={k}>{AREA_META[k].label}</option>)}</select></div>
               <Input value={editJobDesc} onChange={setEditJobDesc} placeholder="Description..." style={{marginBottom:8}}/>
-              <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"#94A3B8"}}>People:</label><select value={editJobPeople} onChange={e=>setEditJobPeople(+e.target.value)} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}><option value={1}>1</option><option value={2}>2</option></select></div><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobRotating} onChange={e=>{setEditJobRotating(e.target.checked);if(e.target.checked)setEditJobFloorRotate(false);}} style={{accentColor:"#F59E0B"}}/> Rotating</label><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8",cursor:"pointer"}}><input type="checkbox" checked={editJobFloorRotate} onChange={e=>{setEditJobFloorRotate(e.target.checked);if(e.target.checked)setEditJobRotating(false);}} style={{accentColor:"#06B6D4"}}/> Floor Rotate</label><div style={{flex:1}}/><SmallBtn onClick={()=>{if(editJobName.trim()){setJobs([...jobs,{id:editJobName.trim().toLowerCase().replace(/\s+/g,"_")+"_"+Date.now(),name:editJobName.trim(),area:editJobArea,people:editJobPeople,desc:editJobDesc.trim(),rotating:editJobRotating,floorRotate:editJobFloorRotate}]);setEditJobName("");setEditJobDesc("");setEditJobPeople(1);setEditJobRotating(false);setEditJobFloorRotate(false);}}}>+ Add</SmallBtn></div>
+              <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}><div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:12,color:"var(--muted)"}}>People:</label><select value={editJobPeople} onChange={e=>setEditJobPeople(+e.target.value)} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:6,padding:"6px 24px 6px 10px",fontSize:13,fontFamily:"inherit"}}><option value={1}>1</option><option value={2}>2</option></select></div><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--muted)",cursor:"pointer"}}><input type="checkbox" checked={editJobRotating} onChange={e=>{setEditJobRotating(e.target.checked);if(e.target.checked)setEditJobFloorRotate(false);}} style={{accentColor:"var(--amber)"}}/> Rotating</label><label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--muted)",cursor:"pointer"}}><input type="checkbox" checked={editJobFloorRotate} onChange={e=>{setEditJobFloorRotate(e.target.checked);if(e.target.checked)setEditJobRotating(false);}} style={{accentColor:"var(--cyan)"}}/> Floor Rotate</label><div style={{flex:1}}/><SmallBtn onClick={()=>{if(editJobName.trim()){setJobs([...jobs,{id:editJobName.trim().toLowerCase().replace(/\s+/g,"_")+"_"+Date.now(),name:editJobName.trim(),area:editJobArea,people:editJobPeople,desc:editJobDesc.trim(),rotating:editJobRotating,floorRotate:editJobFloorRotate}]);setEditJobName("");setEditJobDesc("");setEditJobPeople(1);setEditJobRotating(false);setEditJobFloorRotate(false);}}}>+ Add</SmallBtn></div>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:4}}>{jobs.map((j,i)=>{
               const isEd=editingJobIdx===i;
               const fc=AREA_META[j.area]||{color:"#6B7280"};
-              return<div key={j.id} style={{background:"#1C2332",borderRadius:8,padding:isEd?"12px":"8px 12px",border:`1px solid ${isEd?"#F59E0B":"#364258"}`}}>
+              return<div key={j.id} style={{background:"var(--card)",borderRadius:8,padding:isEd?"12px":"8px 12px",border:`1px solid ${isEd?"var(--amber)":"var(--line)"}`}}>
                 {!isEd?<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>setEditingJobIdx(i)}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:fc.color,flexShrink:0}}/>
-                    <span style={{fontSize:13,color:"#CBD5E1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.name}</span>
-                    <span style={{fontSize:11,color:"#A0AEC3"}}>×{crewSize(j)}</span>
-                    {chairs[j.id]?<span style={{fontSize:10,color:"#D4A843"}}>CHAIR · {chairs[j.id]}</span>:<>
-                    {j.rotating&&<span style={{fontSize:10,color:"#F59E0B"}}>ROT</span>}
-                    {j.floorRotate&&<span style={{fontSize:10,color:"#06B6D4"}}>FLOOR</span>}
-                    {!j.rotating&&!j.floorRotate&&<span style={{fontSize:10,color:"#94A3B8"}}>SEMESTER</span>}</>}
+                    <span style={{fontSize:13,color:"var(--ink-2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{j.name}</span>
+                    <span style={{fontSize:11,color:"var(--muted)"}}>×{crewSize(j)}</span>
+                    {chairs[j.id]?<span style={{fontSize:10,color:"var(--gold)"}}>CHAIR · {chairs[j.id]}</span>:<>
+                    {j.rotating&&<span style={{fontSize:10,color:"var(--amber)"}}>ROT</span>}
+                    {j.floorRotate&&<span style={{fontSize:10,color:"var(--cyan)"}}>FLOOR</span>}
+                    {!j.rotating&&!j.floorRotate&&<span style={{fontSize:10,color:"var(--muted)"}}>SEMESTER</span>}</>}
                   </div>
                   <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
-                    <button onClick={()=>setEditingJobIdx(i)} style={{background:"none",border:"none",color:"#A0AEC3",cursor:"pointer",fontSize:13,padding:"0 4px"}}>✏️</button>
-                    <button onClick={()=>setJobs(jobs.filter((_,k)=>k!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>
+                    <button onClick={()=>setEditingJobIdx(i)} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:13,padding:"0 4px",minWidth:38,minHeight:38}}>✏️</button>
+                    <button onClick={()=>setJobs(jobs.filter((_,k)=>k!==i))} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:18,padding:"0 4px",minWidth:38,minHeight:38,lineHeight:1}}>×</button>
                   </div>
                 </div>
                 :<div style={{display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"flex",gap:8}}>
                     <Input value={j.name} onChange={v=>{const n=[...jobs];n[i]={...n[i],name:v};setJobs(n);}} placeholder="Job name" style={{flex:1,padding:"8px 10px",fontSize:13}}/>
-                    <select value={j.area} onChange={e=>{const n=[...jobs];n[i]={...n[i],area:e.target.value};setJobs(n);}} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:6,padding:"6px 24px 6px 8px",fontSize:12,fontFamily:"inherit"}}>
+                    <select value={j.area} onChange={e=>{const n=[...jobs];n[i]={...n[i],area:e.target.value};setJobs(n);}} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:6,padding:"6px 24px 6px 8px",fontSize:12,fontFamily:"inherit"}}>
                       {AREA_KEYS.map(k=><option key={k} value={k}>{AREA_META[k].label}</option>)}
                     </select>
                   </div>
                   <Input value={j.desc||""} onChange={v=>{const n=[...jobs];n[i]={...n[i],desc:v};setJobs(n);}} placeholder="Description" style={{padding:"8px 10px",fontSize:12}}/>
                   <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                     <div style={{display:"flex",alignItems:"center",gap:4}}>
-                      <label style={{fontSize:11,color:"#94A3B8"}}>People:</label>
-                      <select value={crewSize(j)} onChange={e=>{const n=[...jobs];n[i]={...n[i],people:+e.target.value};setJobs(n);}} style={{background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
+                      <label style={{fontSize:11,color:"var(--muted)"}}>People:</label>
+                      <select value={crewSize(j)} onChange={e=>{const n=[...jobs];n[i]={...n[i],people:+e.target.value};setJobs(n);}} style={{background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:4,padding:"4px 20px 4px 6px",fontSize:12,fontFamily:"inherit"}}>
                         {[1,2].map(x=><option key={x} value={x}>{x}</option>)}
                       </select>
                     </div>
-                    <label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#94A3B8",cursor:"pointer"}}>
-                      <input type="checkbox" checked={!!j.rotating} onChange={e=>{const n=[...jobs];n[i]={...n[i],rotating:e.target.checked,floorRotate:e.target.checked?false:n[i].floorRotate};setJobs(n);}} style={{accentColor:"#F59E0B"}}/> Rotating
+                    <label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"var(--muted)",cursor:"pointer"}}>
+                      <input type="checkbox" checked={!!j.rotating} onChange={e=>{const n=[...jobs];n[i]={...n[i],rotating:e.target.checked,floorRotate:e.target.checked?false:n[i].floorRotate};setJobs(n);}} style={{accentColor:"var(--amber)"}}/> Rotating
                     </label>
-                    <label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#94A3B8",cursor:"pointer"}}>
-                      <input type="checkbox" checked={!!j.floorRotate} onChange={e=>{const n=[...jobs];n[i]={...n[i],floorRotate:e.target.checked,rotating:e.target.checked?false:n[i].rotating};setJobs(n);}} style={{accentColor:"#06B6D4"}}/> Floor Rotate
+                    <label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"var(--muted)",cursor:"pointer"}}>
+                      <input type="checkbox" checked={!!j.floorRotate} onChange={e=>{const n=[...jobs];n[i]={...n[i],floorRotate:e.target.checked,rotating:e.target.checked?false:n[i].rotating};setJobs(n);}} style={{accentColor:"var(--cyan)"}}/> Floor Rotate
                     </label>
                     <div style={{flex:1}}/>
-                    <SmallBtn onClick={()=>setEditingJobIdx(null)} color="#D4A843">Done</SmallBtn>
-                    <button onClick={()=>{setJobs(jobs.filter((_,k)=>k!==i));setEditingJobIdx(null);}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>Delete</button>
+                    <SmallBtn onClick={()=>setEditingJobIdx(null)} color="var(--gold)">Done</SmallBtn>
+                    <button onClick={()=>{setJobs(jobs.filter((_,k)=>k!==i));setEditingJobIdx(null);}} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>Delete</button>
                   </div>
                 </div>}
               </div>;})}
@@ -1913,40 +1976,40 @@ body{background:#10131c}
           </div>}
           {setupTab==="weeks"&&<div>
             <div className="hm-card" style={{marginBottom:14}}>
-              <h3 style={{fontSize:13,color:"#D4A843",marginBottom:5}}>Automatic semester setup</h3>
-              <p style={{fontSize:11,color:"#A0AEC3",lineHeight:1.5,marginBottom:10}}>Choose the first Monday and last day. Add any date during a break week to skip that entire week.</p>
+              <h3 style={{fontSize:13,color:"var(--gold)",marginBottom:5}}>Automatic semester setup</h3>
+              <p style={{fontSize:11,color:"var(--muted)",lineHeight:1.5,marginBottom:10}}>Choose the first Monday and last day. Add any date during a break week to skip that entire week.</p>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                <label style={{fontSize:11,color:"#94A3B8"}}>First week<Input type="date" value={semesterStart} onChange={setSemesterStart} style={{marginTop:4,padding:"8px"}}/></label>
-                <label style={{fontSize:11,color:"#94A3B8"}}>Last day<Input type="date" value={semesterEnd} onChange={setSemesterEnd} style={{marginTop:4,padding:"8px"}}/></label>
+                <label style={{fontSize:11,color:"var(--muted)"}}>First week<Input type="date" value={semesterStart} onChange={setSemesterStart} style={{marginTop:4,padding:"8px"}}/></label>
+                <label style={{fontSize:11,color:"var(--muted)"}}>Last day<Input type="date" value={semesterEnd} onChange={setSemesterEnd} style={{marginTop:4,padding:"8px"}}/></label>
               </div>
               <Input value={semesterExcluded} onChange={setSemesterExcluded} placeholder="Break dates: 2027-03-15, 2027-04-02" style={{marginBottom:8}}/>
-              <button onClick={()=>{const generated=generateWeekLabels(semesterStart,semesterEnd,semesterExcluded);if(!generated.length){alert("Choose a valid start and end date.");return;}setWeeks(generated);}} style={{width:"100%",background:"#D4A84320",border:"1px solid #D4A84360",color:"#D4A843",borderRadius:8,padding:"10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Generate semester weeks</button>
+              <button onClick={()=>{const generated=generateWeekLabels(semesterStart,semesterEnd,semesterExcluded);if(!generated.length){alert("Choose a valid start and end date.");return;}setWeeks(generated);}} style={{width:"100%",background:"color-mix(in srgb, var(--gold) 13%, transparent)",border:"1px solid color-mix(in srgb, var(--gold) 38%, transparent)",color:"var(--gold)",borderRadius:8,padding:"10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Generate semester weeks</button>
             </div>
-            <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}><Input value={editWeekStart} onChange={setEditWeekStart} placeholder="M/D" style={{flex:"1 1 90px"}}/><span style={{color:"#A0AEC3"}}>–</span><Input value={editWeekEnd} onChange={setEditWeekEnd} placeholder="M/D" style={{flex:"1 1 90px"}}/><SmallBtn onClick={()=>{if(editWeekStart.trim()&&editWeekEnd.trim()){setWeeks([...weeks,`${editWeekStart.trim()}-${editWeekEnd.trim()}`]);setEditWeekStart("");setEditWeekEnd("");}}}>+ Add</SmallBtn></div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>{weeks.map((w,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:i===currentWeekIdx?"#D4A84318":"#1C2332",borderRadius:8,padding:"8px 12px",border:`1px solid ${i===currentWeekIdx?"#D4A843":"#364258"}`}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:11,color:"#A0AEC3",fontFamily:"'Space Mono',monospace",width:24}}>{i+1}</span><span style={{fontSize:13,color:"#CBD5E1",fontFamily:"'Space Mono',monospace"}}>{w}</span></div><button onClick={()=>setWeeks(weeks.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:18,padding:"0 4px",lineHeight:1}}>×</button></div>)}</div>
+            <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}><Input value={editWeekStart} onChange={setEditWeekStart} placeholder="M/D" style={{flex:"1 1 90px"}}/><span style={{color:"var(--muted)"}}>–</span><Input value={editWeekEnd} onChange={setEditWeekEnd} placeholder="M/D" style={{flex:"1 1 90px"}}/><SmallBtn onClick={()=>{if(editWeekStart.trim()&&editWeekEnd.trim()){setWeeks([...weeks,`${editWeekStart.trim()}-${editWeekEnd.trim()}`]);setEditWeekStart("");setEditWeekEnd("");}}}>+ Add</SmallBtn></div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>{weeks.map((w,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:i===currentWeekIdx?"color-mix(in srgb, var(--gold) 9%, transparent)":"var(--card)",borderRadius:8,padding:"8px 12px",border:`1px solid ${i===currentWeekIdx?"var(--gold)":"var(--line)"}`}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:11,color:"var(--muted)",fontFamily:"'Space Mono',monospace",width:24}}>{i+1}</span><span style={{fontSize:13,color:"var(--ink-2)",fontFamily:"'Space Mono',monospace"}}>{w}</span></div><button onClick={()=>setWeeks(weeks.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"var(--red)",cursor:"pointer",fontSize:18,padding:"0 4px",minWidth:38,minHeight:38,lineHeight:1}}>×</button></div>)}</div>
             <div className="hm-card" style={{marginTop:16}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}><div><h3 style={{fontSize:13,color:"#3B82F6"}}>Semester archives</h3><p style={{fontSize:10,color:"#A0AEC3",marginTop:2}}>Snapshots preserve assignments, reports, proof, and settings.</p></div><SmallBtn onClick={archiveSemester} color="#3B82F6">{archiveBusy?"Saving...":"Archive now"}</SmallBtn></div>
-              {Object.values(archives).length===0?<p style={{fontSize:11,color:"#A0AEC3"}}>No archived semesters yet.</p>:Object.values(archives).sort((a,b)=>String(b.archivedAt).localeCompare(String(a.archivedAt))).map(a=><div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid #364258"}}><div><div style={{fontSize:12,color:"#E2E8F0"}}>{a.name}</div><div style={{fontSize:10,color:"#A0AEC3"}}>{new Date(a.archivedAt).toLocaleString()}</div></div><SmallBtn onClick={()=>downloadArchive(a)} color="#8B5CF6">Download JSON</SmallBtn></div>)}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}><div><h3 style={{fontSize:13,color:"var(--blue)"}}>Semester archives</h3><p style={{fontSize:10,color:"var(--muted)",marginTop:2}}>Snapshots preserve assignments, reports, proof, and settings.</p></div><SmallBtn onClick={archiveSemester} color="var(--blue)">{archiveBusy?"Saving...":"Archive now"}</SmallBtn></div>
+              {Object.values(archives).length===0?<p style={{fontSize:11,color:"var(--muted)"}}>No archived semesters yet.</p>:Object.values(archives).sort((a,b)=>String(b.archivedAt).localeCompare(String(a.archivedAt))).map(a=><div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"8px 0",borderTop:"1px solid var(--line)"}}><div><div style={{fontSize:12,color:"var(--ink)"}}>{a.name}</div><div style={{fontSize:10,color:"var(--muted)"}}>{new Date(a.archivedAt).toLocaleString()}</div></div><SmallBtn onClick={()=>downloadArchive(a)} color="var(--purple)">Download JSON</SmallBtn></div>)}
             </div>
           </div>}
           <div style={{marginTop:24,display:"flex",flexDirection:"column",gap:10}}>
-            {!confirmRegen?<button onClick={()=>setConfirmRegen(true)} disabled={saving} style={{background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#FFF",borderRadius:10,padding:"14px 20px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:saving?.6:1}}>{saving?"Saving...":"🔄 Regenerate All"}</button>
-            :<div style={{background:"#7F1D1D20",border:"1px solid #EF444450",borderRadius:10,padding:16}}><p style={{fontSize:13,color:"#FCA5A5",marginBottom:12,lineHeight:1.5}}>This erases ALL tracking and creates fresh assignments. Sure?</p><div style={{display:"flex",gap:8}}><button onClick={regenerate} disabled={saving} style={{flex:1,background:"#EF4444",border:"none",color:"#FFF",borderRadius:8,padding:"10px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{saving?"...":"Yes"}</button><button onClick={()=>setConfirmRegen(false)} style={{flex:1,background:"#1C2332",border:"1px solid #364258",color:"#94A3B8",borderRadius:8,padding:"10px",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button></div></div>}
+            {!confirmRegen?<button onClick={()=>setConfirmRegen(true)} disabled={saving} style={{background:"linear-gradient(135deg,var(--gold),var(--gold-deep))",border:"none",color:"#FFF",borderRadius:10,padding:"14px 20px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:saving?.6:1}}>{saving?"Saving...":"🔄 Regenerate All"}</button>
+            :<div style={{background:"#7F1D1D20",border:"1px solid color-mix(in srgb, var(--red) 31%, transparent)",borderRadius:10,padding:16}}><p style={{fontSize:13,color:"var(--red)",marginBottom:12,lineHeight:1.5}}>This erases ALL tracking and creates fresh assignments. Sure?</p><div style={{display:"flex",gap:8}}><button onClick={regenerate} disabled={saving} style={{flex:1,background:"var(--red)",border:"none",color:"#FFF",borderRadius:8,padding:"10px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{saving?"...":"Yes"}</button><button onClick={()=>setConfirmRegen(false)} style={{flex:1,background:"var(--card)",border:"1px solid var(--line)",color:"var(--muted)",borderRadius:8,padding:"10px",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button></div></div>}
           </div>
         </div>}
 
         {completionDraft&&<div className="proof-modal" role="dialog" aria-modal="true" onClick={e=>{if(e.target===e.currentTarget)setCompletionDraft(null);}}>
           <div className="proof-sheet">
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:14}}><div><div style={{fontSize:10,color:"#D4A843",fontWeight:700,letterSpacing:".08em"}}>SUBMIT FOR VERIFICATION</div><h2 style={{fontSize:18,color:"#F8FAFC",marginTop:4}}>{completionDraft.name}</h2><p style={{fontSize:11,color:"#A0AEC3",marginTop:3}}>{completionDraft.week}</p></div><button onClick={()=>setCompletionDraft(null)} aria-label="Close" style={{background:"none",border:"none",color:"#94A3B8",fontSize:24,cursor:"pointer",lineHeight:1}}>×</button></div>
-            {!myName&&<div style={{background:"#F59E0B12",border:"1px solid #F59E0B40",borderRadius:8,padding:9,fontSize:11,color:"#F59E0B",marginBottom:10}}>Choose your name in the Me tab so the submission records who completed it.</div>}
-            <textarea value={proofNote} onChange={e=>setProofNote(e.target.value)} placeholder="Completion note (optional)" rows={3} style={{width:"100%",resize:"vertical",background:"#161C29",border:"1px solid #364258",color:"#E2E8F0",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:9}}/>
-            <div style={{background:"#161C29",borderRadius:9,padding:10,marginBottom:12}}><label style={{fontSize:11,color:"#94A3B8",display:"block",marginBottom:6}}>Supplies for this job</label><select value={supplyStatus} onChange={e=>setSupplyStatus(e.target.value)} style={{width:"100%",background:"#1C2332",border:"1px solid #364258",color:"#E2E8F0",borderRadius:7,padding:"9px",fontFamily:"inherit",marginBottom:supplyStatus==="ok"?0:8}}><option value="ok">All stocked</option><option value="low">Running low</option><option value="out">Out of supplies</option></select>{supplyStatus!=="ok"&&<Input value={supplyNote} onChange={setSupplyNote} placeholder="What needs restocking?"/>}</div>
-            {completionError&&<div role="alert" style={{background:"#7F1D1D35",border:"1px solid #EF444466",color:"#FECACA",borderRadius:8,padding:"10px 12px",fontSize:12,lineHeight:1.45,marginBottom:12}}>{completionError}</div>}
-            <button onClick={submitCompletion} disabled={completionBusy} style={{width:"100%",background:"linear-gradient(135deg,#D4A843,#B8922E)",border:"none",color:"#10131C",borderRadius:10,padding:"13px",fontSize:14,fontWeight:800,cursor:"pointer"}}>{completionBusy?"Submitting…":"Mark done and send to manager"}</button>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:14}}><div><div style={{fontSize:10,color:"var(--gold)",fontWeight:700,letterSpacing:".08em"}}>SUBMIT FOR VERIFICATION</div><h2 style={{fontSize:18,color:"var(--ink)",marginTop:4}}>{completionDraft.name}</h2><p style={{fontSize:11,color:"var(--muted)",marginTop:3}}>{completionDraft.week}</p></div><button onClick={()=>setCompletionDraft(null)} aria-label="Close" style={{background:"none",border:"none",color:"var(--muted)",fontSize:24,cursor:"pointer",lineHeight:1}}>×</button></div>
+            {!myName&&<div style={{background:"color-mix(in srgb, var(--amber) 7%, transparent)",border:"1px solid color-mix(in srgb, var(--amber) 25%, transparent)",borderRadius:8,padding:9,fontSize:11,color:"var(--amber)",marginBottom:10}}>Choose your name in the Me tab so the submission records who completed it.</div>}
+            <textarea value={proofNote} onChange={e=>setProofNote(e.target.value)} placeholder="Completion note (optional)" rows={3} style={{width:"100%",resize:"vertical",background:"var(--field)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:8,padding:"10px 12px",fontFamily:"inherit",marginBottom:9}}/>
+            <div style={{background:"var(--field)",borderRadius:9,padding:10,marginBottom:12}}><label style={{fontSize:11,color:"var(--muted)",display:"block",marginBottom:6}}>Supplies for this job</label><select value={supplyStatus} onChange={e=>setSupplyStatus(e.target.value)} style={{width:"100%",background:"var(--card)",border:"1px solid var(--line)",color:"var(--ink)",borderRadius:7,padding:"9px",fontFamily:"inherit",marginBottom:supplyStatus==="ok"?0:8}}><option value="ok">All stocked</option><option value="low">Running low</option><option value="out">Out of supplies</option></select>{supplyStatus!=="ok"&&<Input value={supplyNote} onChange={setSupplyNote} placeholder="What needs restocking?"/>}</div>
+            {completionError&&<div role="alert" style={{background:"#7F1D1D35",border:"1px solid color-mix(in srgb, var(--red) 40%, transparent)",color:"var(--red)",borderRadius:8,padding:"10px 12px",fontSize:12,lineHeight:1.45,marginBottom:12}}>{completionError}</div>}
+            <button onClick={submitCompletion} disabled={completionBusy} style={{width:"100%",background:"linear-gradient(135deg,var(--gold),var(--gold-deep))",border:"none",color:"var(--bg)",borderRadius:10,padding:"13px",fontSize:14,fontWeight:800,cursor:"pointer"}}>{completionBusy?"Submitting…":"Mark done and send to manager"}</button>
           </div>
         </div>}
 
-      </div>
+      </main>
     </div>
   );
 }
