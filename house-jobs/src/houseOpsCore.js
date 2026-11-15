@@ -28,19 +28,21 @@ export function reconcileMakeups(input,weeks,jobDefinitions){
   }
   weeks.forEach((week,index)=>{
     const data=all[weekKey(week)];if(!data)return;
+    // Makeups go to the next Sunday that isn't cancelled.
+    const next=weeks.slice(index+1).find(w=>!all[weekKey(w)]?.cancelled);
+    const want=(name,source)=>{if(!next)return;const wk=weekKey(next),pk=keyOf(name);wanted[wk]??={};wanted[wk][pk]??={name,sources:[]};wanted[wk][pk].sources.push(source);};
     for(const record of Object.values(data.attendance||{})){
       if(!["absent","excused"].includes(record.status)||record.makeupRequired===false)continue;
-      const next=weeks[index+1];if(!next)continue;
-      const wk=weekKey(next),pk=keyOf(record.name);
-      wanted[wk]??={};wanted[wk][pk]??={name:record.name,sources:[]};
-      wanted[wk][pk].sources.push(week);
+      want(record.name,week);
     }
+    // Hand-entered makeups on a cancelled Sunday carry forward to the next one.
+    if(data.cancelled)(data.manualMakeups||[]).forEach(name=>want(name,week));
   });
   for(const wk of unique([...Object.keys(all),...Object.keys(wanted)])){
     if(!all[wk])all[wk]={group:weeks.findIndex(w=>weekKey(w)===wk)%2===0?"even":"odd",bothGroups:false,jobs:{},makeupVersion:1};
     const data=all[wk];data.jobs??={};data.autoMakeupAssignments??={};
     data.makeupSources=wanted[wk]||{};
-    const names=unique([...(data.manualMakeups||[]),...Object.values(data.makeupSources).map(x=>x.name)]);
+    const names=data.cancelled?[]:unique([...(data.manualMakeups||[]),...Object.values(data.makeupSources).map(x=>x.name)]);
     // Undo only assignments this process inserted, and only while still pending.
     for(const [pk,added] of Object.entries(data.autoMakeupAssignments)){
       if(names.includes(added.name))continue;
@@ -105,7 +107,7 @@ export function approveRequest(input,id,uid,now){
     let affected=0;
     for(const week of weeks){
       const date=sundayDate(week,year),row=root.sundayAssignments?.[weekKey(week)];
-      if(date<request.start||date>request.end||!row)continue;
+      if(date<request.start||date>request.end||!row||row.cancelled)continue;
       const names=expectedNames(row,root.sundayConfig?.evenPins||[],root.sundayConfig?.oddPins||[]);
       if(!names.includes(request.requesterName))continue;
       if(row.attendance?.[keyOf(request.requesterName)]?.status==="present")throw Error("Attendance is already marked present. Resolve the attendance record first.");

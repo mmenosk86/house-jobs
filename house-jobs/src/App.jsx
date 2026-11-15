@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {useHouseOperations,SundayAttendance,Requests,Supplies,Maintenance,Events,OpsPersonal,OpsManager} from "./HouseOperations.jsx";
 import {keyOf,reconcileMakeups} from "./houseOpsCore.js";
 import {scheduleWeekly,crewSize,MAX_PER_JOB} from "./weeklyCore.js";
-import {assignSundayJobs,sundayPool,sundayJobList,KITCHEN_ID,KITCHEN_MAX} from "./sundayCore.js";
+import {assignSundayJobs,sundayPool,sundayJobList,cancelSunday,restoreSunday,KITCHEN_ID,KITCHEN_MAX} from "./sundayCore.js";
 
 /*
  * HOUSE JOBS — HOUSE HQ v3 — HOUSE OPERATIONS (Spark, Firebase Auth, no Storage)
@@ -188,9 +188,12 @@ function pickKitchenTeam(pool,count,history=[]){
 // existing: current schedule, so weeks keep their pin group and finished jobs stay put.
 function generateSundayAssignments(ep,op,sj,weeks,existing={}){
   const asg={},kitchenHistory={};
-  weeks.forEach((week,wi)=>{
+  let active=0; // cancelled Sundays don't count toward the even/odd alternation
+  weeks.forEach(week=>{
     const prev=existing?.[week];
-    const wa=prev?{...prev,group:prev.group||(wi%2===0?"even":"odd"),bothGroups:!!prev.bothGroups}:{group:wi%2===0?"even":"odd",bothGroups:false,jobs:{}};
+    if(prev?.cancelled){asg[week]=prev;return;}
+    const turn=active++%2===0?"even":"odd";
+    const wa=prev?{...prev,group:prev.group||turn,bothGroups:!!prev.bothGroups}:{group:turn,bothGroups:false,jobs:{}};
     const pool=shuffle(sundayPool(wa,ep,op)),key=kitchenPoolKey(pool),history=kitchenHistory[key]||[];
     const kitchenTeam=pickKitchenTeam(pool,KITCHEN_MAX,history);
     wa.jobs=assignSundayJobs({pool,jobs:sundayJobList(sj,wa),kitchenTeam,existing:prev});
@@ -209,6 +212,7 @@ function getKitchenHistory(assignments,weeks,targetWeek,pool){
   return history;
 }
 function regenerateSundayWeek(wa,ep,op,sj,history=[]){
+  if(wa?.cancelled)return wa;
   const pool=shuffle(sundayPool(wa,ep,op));
   const jobs=assignSundayJobs({pool,jobs:sundayJobList(sj,wa),kitchenTeam:pickKitchenTeam(pool,KITCHEN_MAX,history),existing:wa});
   // Keep generated makeup slots; their people are not in this week's pin group.
@@ -900,7 +904,7 @@ export default function HouseJobsApp(){
     const regen=wk=>{u[wk]=regenerateSundayWeek(u[wk],evenPins,oddPins,sundayJobs,getKitchenHistory(u,weeks,wk,sundayPool(u[wk],evenPins,oddPins)));};
     cur.bothGroups=choice==="both";if(choice!=="both")cur.group=choice;
     regen(week);
-    const later=weeks.slice(weeks.indexOf(week)+1).filter(wk=>u[wk]&&!u[wk].bothGroups);
+    const later=weeks.slice(weeks.indexOf(week)+1).filter(wk=>u[wk]&&!u[wk].bothGroups&&!u[wk].cancelled);
     if(choice!=="both"&&was!=="both"&&later.length&&confirm(`Also swap the ${later.length} Sundays after this one so they keep alternating?`)){
       later.forEach(wk=>{u[wk].group=u[wk].group==="even"?"odd":"even";regen(wk);});
       setSundayAssignments(u);saveSunA(u);
@@ -915,6 +919,21 @@ export default function HouseJobsApp(){
     Object.entries(u[week].jobs).forEach(([id,job])=>{if(id!==jobId&&job.status==="pending")job.assigned=(job.assigned||[]).filter(n=>!picked.includes(n));});
     u[week].jobs[jobId].assigned=picked;
     saveSunWeek(week,u[week]);
+  }
+  // Cancel a Sunday for a break: later Sundays slide one week so the pin order and kitchen rotation continue.
+  function cancelThisSunday(week){
+    let u;
+    try{u=cancelSunday(sundayAssignments,weeks,week);}catch(e){alert(e.message);return;}
+    if(!confirm(`Cancel Sunday cleaning for ${week}? Every Sunday after it moves back one week, so whoever was up this Sunday cleans next Sunday instead. You can restore it later.`))return;
+    setSundayAssignments(u);saveSunA(u);
+  }
+  function restoreThisSunday(week){
+    let result;
+    try{result=restoreSunday(sundayAssignments,weeks,week);}catch(e){alert(e.message);return;}
+    if(!confirm(`Restore Sunday cleaning for ${week}? Later Sundays move forward one week again.`))return;
+    const u=result.schedule;
+    if(result.needsPlan){const w=result.needsPlan;u[w]=regenerateSundayWeek(u[w],evenPins,oddPins,sundayJobs,getKitchenHistory(u,weeks,w,sundayPool(u[w],evenPins,oddPins)));}
+    setSundayAssignments(u);saveSunA(u);
   }
   function reshuffleSundayWeek(week){
     const u=JSON.parse(JSON.stringify(sundayAssignments));
@@ -1402,7 +1421,17 @@ body{background:var(--bg)}
         </div>}
 
         {/* ══════ SUNDAY ══════ */}
-        {view==="sunday"&&<div className="fu">
+        {/* Cancelled Sunday (break/holiday): nothing to do this week; the schedule after it slid one week later. */}
+        {view==="sunday"&&sunWeekData.cancelled&&<div className="fu">
+          <h2 className="page-title">Sunday Cleaning</h2>
+          <div className="hm-card" style={{textAlign:"center",padding:"28px 18px"}}>
+            <div style={{fontSize:30,marginBottom:8}}>🏖️</div>
+            <h3 style={{fontSize:18,color:"var(--ink)",marginBottom:6}}>No Sunday cleaning this week</h3>
+            <p style={{fontSize:13,color:"var(--muted)",lineHeight:1.5}}>This Sunday is cancelled. The pin group and jobs planned for it moved to the next Sunday, so the order picks up where it left off.</p>
+            {adminUnlocked&&<div style={{marginTop:16}}><SmallBtn onClick={()=>restoreThisSunday(currentWeek)} color="var(--gold)">Restore this Sunday</SmallBtn></div>}
+          </div>
+        </div>}
+        {view==="sunday"&&!sunWeekData.cancelled&&<div className="fu">
           {(()=>{
             const pool=sundayPool(sunWeekData,evenPins,oddPins);
             const makeups=sunWeekData.makeups||[];
@@ -1535,7 +1564,8 @@ body{background:var(--bg)}
             </div>
           </div>}
 
-          {adminUnlocked&&<button onClick={()=>setView("sunday_setup")} style={{marginTop:20,width:"100%",background:"var(--card)",border:"1px solid var(--line)",color:"var(--muted)",borderRadius:10,padding:"12px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>⚙ Edit Sunday Roster & Jobs</button>}
+          {adminUnlocked&&<button onClick={()=>cancelThisSunday(currentWeek)} style={{marginTop:20,width:"100%",background:"var(--card)",border:"1px solid color-mix(in srgb, var(--red) 35%, transparent)",color:"var(--red)",borderRadius:10,padding:"12px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel this Sunday (break or holiday)</button>}
+          {adminUnlocked&&<button onClick={()=>setView("sunday_setup")} style={{marginTop:10,width:"100%",background:"var(--card)",border:"1px solid var(--line)",color:"var(--muted)",borderRadius:10,padding:"12px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>⚙ Edit Sunday Roster & Jobs</button>}
         </div>}
 
         {/* ══════ SUNDAY SETUP ══════ */}
