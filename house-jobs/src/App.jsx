@@ -189,12 +189,12 @@ body{background:radial-gradient(circle at 15% 0,#FFFFFF 0,transparent 40%),var(-
 .lights{position:relative;display:flex;height:24px;margin:-8px -20px 6px;overflow:hidden;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='12'%3E%3Cpath d='M0 2 Q12 11 24 2' fill='none' stroke='%232F4A3A' stroke-width='1.6'/%3E%3C/svg%3E") repeat-x 0 0}
 .lights span{flex:0 0 24px;position:relative}
 .lights span::before{content:"";position:absolute;left:10px;top:5px;width:4px;height:4px;border-radius:1px;background:#2F4A3A}
-.lights span::after{content:"";position:absolute;left:8px;top:8px;width:8px;height:12px;border-radius:50% 50% 50% 50%/40% 40% 60% 60%;background:var(--bulb);box-shadow:0 0 8px 2px var(--bulb);animation:twinkle 2.4s ease-in-out infinite;animation-delay:var(--delay)}
-.lights span:nth-child(4n+1){--bulb:#E53935;--delay:0s}.lights span:nth-child(4n+2){--bulb:#2EA55E;--delay:.6s}.lights span:nth-child(4n+3){--bulb:#F4B400;--delay:1.2s}.lights span:nth-child(4n+4){--bulb:#2F7DE1;--delay:1.8s}
-@keyframes twinkle{0%,100%{opacity:1;filter:brightness(1.15)}50%{opacity:.45;filter:brightness(.8)}}
+.lights span::after{content:"";position:absolute;left:8px;top:8px;width:8px;height:12px;border-radius:50% 50% 50% 50%/40% 40% 60% 60%;background:var(--bulb);box-shadow:0 0 10px 3px var(--bulb);animation:twinkle var(--dur,2s) ease-in-out var(--delay,0s) infinite}
+.lights span:nth-child(4n+1){--bulb:#E53935}.lights span:nth-child(4n+2){--bulb:#2EA55E}.lights span:nth-child(4n+3){--bulb:#F4B400}.lights span:nth-child(4n+4){--bulb:#2F7DE1}
+@keyframes twinkle{0%,100%{opacity:1;filter:brightness(1.25);box-shadow:0 0 12px 4px var(--bulb)}45%{opacity:.9}55%{opacity:.2;filter:brightness(.6);box-shadow:0 0 0 0 transparent}70%{opacity:.85;filter:brightness(1.1)}}
 @media(max-width:767px){.lights{margin:-6px -16px 6px}}
-@media(prefers-reduced-motion:reduce){.lights span::after{animation:none}}
-@media(prefers-reduced-motion:reduce){.snow::before,.snow::after{animation:none;top:0}}
+@media(prefers-reduced-motion:reduce){.lights span::after{animation-duration:calc(var(--dur,2s) * 2)}}
+/* Snow falls for everyone (it was still on devices with reduced animations); it drifts slowly. */
 `;
 
 // ─── HELPERS ───
@@ -1266,7 +1266,7 @@ body{background:var(--bg)}
       {HOLIDAY_THEME&&<div className="snow" aria-hidden="true"/>}
       {/* HEADER — compact on phones: brand + progress ring, then the week switcher */}
       <header className="app-header">
-        {HOLIDAY_THEME&&<div className="lights" aria-hidden="true">{Array.from({length:60},(_,i)=><span key={i}/>)}</div>}
+        {HOLIDAY_THEME&&<div className="lights" aria-hidden="true">{Array.from({length:60},(_,i)=><span key={i} style={{"--delay":`${(i*37%23)/10}s`,"--dur":`${1.4+(i*53%17)/10}s`}}/>)}</div>}
         <div className="hdr-row">
           <div style={{minWidth:0}}>
             <div className="brand"><h1>ΣΦΕ House</h1><SyncDot connected={fbConnected}/></div>
