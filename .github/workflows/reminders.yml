@@ -1,0 +1,45 @@
+# Sends job reminder notifications to brothers who turned them on in the app.
+#  - Daily at 16:00 UTC (11am/noon in Houghton): weekly-job reminders, only on the weekly due day.
+#  - Saturdays at 23:30 UTC (6:30/7:30pm in Houghton): Sunday cleaning reminders.
+# Needs the FIREBASE_SERVICE_ACCOUNT repository secret. Run it by hand from the Actions tab to test.
+name: Job reminders
+on:
+  schedule:
+    - cron: "0 16 * * *"
+    - cron: "30 23 * * 6"
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "weekly or sunday"
+        required: true
+        default: sunday
+      only:
+        description: "Only send to this brother (exact name), for testing"
+        required: false
+      dry:
+        description: "Dry run: list who would get what, send nothing"
+        type: boolean
+        default: true
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: reminders
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Send reminders
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.kind || (github.event.schedule == '30 23 * * 6' && 'sunday' || 'weekly') }}
+          ONLY: ${{ inputs.only }}
+          DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry || false }}
+        run: |
+          args=(--kind="$KIND")
+          if [ -n "$ONLY" ]; then args+=(--only="$ONLY" --force); fi
+          if [ "$DRY" = "true" ]; then args+=(--dry --force); fi
+          node send-reminders.mjs "${args[@]}"

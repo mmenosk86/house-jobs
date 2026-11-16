@@ -2,6 +2,7 @@ import {useState,useEffect} from "react";
 import {STATUS_CONFIG,DIFF_COLORS} from "./constants.js";
 import {tint} from "./theme.js";
 import {formatDue} from "./dates.js";
+import {VAPID_KEY,pushSupport,enablePush,disablePush} from "./firebase.js";
 
 // Small shared UI pieces: badges, buttons, nav icons and the My jobs task list.
 // ─── COMPONENTS ───
@@ -77,5 +78,34 @@ export function InstallBanner(){
       <p>{prompt?"Install it for one-tap access and job reminders.":<>Tap <b>Share</b> <span aria-hidden="true">⎋</span> then <b>Add to Home Screen</b>.</>}</p></div>
     {prompt&&<button className="install-go" onClick={async()=>{prompt.prompt();await prompt.userChoice.catch(()=>{});setPrompt(null);}}>Install</button>}
     <button className="install-x" aria-label="Dismiss" onClick={dismiss}>×</button>
+  </div>;
+}
+
+// "Remind me" switch on My jobs. Saves this device for job reminders under the brother's name.
+export function ReminderToggle({name,connected}){
+  const key="housejobs:reminders";
+  const[on,setOn]=useState(()=>{try{return localStorage.getItem(key)||"";}catch{return"";}});
+  const[busy,setBusy]=useState(false),[msg,setMsg]=useState("");
+  const support=pushSupport();
+  // Keep the saved name in sync if the brother changes the name on this device.
+  useEffect(()=>{if(on&&name&&on!==name&&connected&&support==="granted")enablePush(name).then(()=>{setOn(name);try{localStorage.setItem(key,name);}catch{}}).catch(()=>{});},[name,on,connected,support]);
+  if(!VAPID_KEY||!connected||!name||support==="unsupported")return null;
+  async function turnOn(){
+    setBusy(true);setMsg("");
+    try{await enablePush(name);setOn(name);try{localStorage.setItem(key,name);}catch{}setMsg("You'll get a reminder on due days and the night before Sunday cleaning.");}
+    catch(e){setMsg(e.message||"Couldn't turn on reminders.");}finally{setBusy(false);}
+  }
+  async function turnOff(){
+    setBusy(true);setMsg("");
+    try{await disablePush();setOn("");try{localStorage.removeItem(key);}catch{}}catch{setMsg("Couldn't turn reminders off. Try again.");}finally{setBusy(false);}
+  }
+  return <div className="reminder-card">
+    <span className="reminder-bell" aria-hidden="true">🔔</span>
+    <div style={{flex:1,minWidth:0}}>
+      <strong>{on?"Reminders are on":"Job reminders"}</strong>
+      <p>{support==="install"?"On iPhone, add the app to your Home Screen first, then turn on reminders from there.":on?"On this device, for "+on+".":"Get a heads-up on due days and the night before Sunday cleaning."}</p>
+      {msg&&<p role="status" className="reminder-msg">{msg}</p>}
+    </div>
+    {support!=="install"&&(on?<button className="reminder-off" disabled={busy} onClick={turnOff}>Turn off</button>:<button className="reminder-on" disabled={busy} onClick={turnOn}>{busy?"…":"Turn on"}</button>)}
   </div>;
 }

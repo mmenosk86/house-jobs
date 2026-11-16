@@ -1,0 +1,13 @@
+{
+  "name": "house-jobs-reminders",
+  "private": true,
+  "type": "module",
+  "description": "Sends house job reminder notifications. Run by .github/workflows/reminders.yml.",
+  "scripts": {
+    "weekly": "node send-reminders.mjs --kind=weekly",
+    "sunday": "node send-reminders.mjs --kind=sunday"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}

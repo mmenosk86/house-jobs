@@ -23,7 +23,7 @@ export function sanitizeObjKeys(o){const r={};Object.entries(o).forEach(([k,v])=
 export function desanitizeObjKeys(o,keys){const m={};keys.forEach(k=>{m[sanitizeKey(k)]=k;});const r={};Object.entries(o).forEach(([sk,v])=>{r[m[sk]||sk]=v;});return r;}
 
 // Firebase
-export let db=null,auth=null,firebaseReady=false;
+export let db=null,auth=null,firebaseReady=false,fbApp=null;
 export async function initFirebase(){
   if(firebaseReady)return true;
   if(FIREBASE_CONFIG.apiKey==="YOUR_API_KEY")return false;
@@ -31,7 +31,7 @@ export async function initFirebase(){
     const{initializeApp}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js");
     const{getDatabase}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-database.js");
     const{getAuth,signInAnonymously}=await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js");
-    const app=initializeApp(FIREBASE_CONFIG);
+    const app=initializeApp(FIREBASE_CONFIG);fbApp=app;
     db=getDatabase(app);auth=getAuth(app);
     if(!auth.currentUser)await signInAnonymously(auth);
     firebaseReady=true;return true;
@@ -69,4 +69,35 @@ export function completionErrorText(error){
   if(message.startsWith("This job is already"))return message;
   const detail=(message||String(error||"")).slice(0,180);
   return`Could not submit this job${code?` (${code})`:""}.${detail?` ${detail}`:" Refresh and try again."}`;
+}
+
+// ─── Job reminders (push notifications) ───
+// Public "Web Push certificate" key from Firebase console → Project settings → Cloud Messaging.
+// Reminders stay hidden in the app until this is filled in.
+export const VAPID_KEY="";
+const MESSAGING="https://www.gstatic.com/firebasejs/11.8.1/firebase-messaging.js";
+// "unsupported" (browser can't), "install" (iPhone: needs the home-screen app), "denied", "default" (not asked), "granted"
+export function pushSupport(){
+  if(typeof window==="undefined")return"unsupported";
+  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent),standalone=window.matchMedia?.("(display-mode: standalone)").matches||navigator.standalone;
+  if(!("serviceWorker" in navigator)||!("Notification" in window)||!("PushManager" in window))return ios&&!standalone?"install":"unsupported";
+  return Notification.permission;
+}
+// Ask permission, subscribe this device and save it under the brother's name so the reminder script can find it.
+export async function enablePush(name){
+  if(!VAPID_KEY)throw new Error("Reminders aren't set up yet.");
+  if(!firebaseReady||!auth?.currentUser)throw new Error("Connect to the internet and try again.");
+  const permission=await Notification.requestPermission();
+  if(permission!=="granted")throw new Error(permission==="denied"?"Notifications are blocked for this site. Allow them in your browser or phone settings.":"Notifications weren't allowed.");
+  const{getMessaging,getToken,isSupported}=await import(MESSAGING);
+  if(!(await isSupported()))throw new Error("This browser can't receive reminders.");
+  const registration=await navigator.serviceWorker.ready;
+  const token=await getToken(getMessaging(fbApp),{vapidKey:VAPID_KEY,serviceWorkerRegistration:registration});
+  if(!token)throw new Error("Couldn't turn on reminders. Try again.");
+  await fbSet(`pushTokens/${auth.currentUser.uid}`,{name,token,updatedAt:new Date().toISOString(),device:navigator.userAgent.slice(0,120)});
+  return token;
+}
+export async function disablePush(){
+  try{const{getMessaging,deleteToken}=await import(MESSAGING);await deleteToken(getMessaging(fbApp));}catch{}
+  if(auth?.currentUser)await fbSet(`pushTokens/${auth.currentUser.uid}`,null);
 }
