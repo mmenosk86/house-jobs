@@ -103,9 +103,9 @@ export function ReminderToggle({name,connected}){
     <span className="reminder-bell" aria-hidden="true">🔔</span>
     <div style={{flex:1,minWidth:0}}>
       <strong>{on?"Reminders are on":"Job reminders"}</strong>
-      <p>{support==="install"?"On iPhone, add the app to your Home Screen first, then turn on reminders from there.":on?"On this device, for "+on+".":"Get a heads-up on due days and the night before Sunday cleaning."}</p>
+      <p>{support==="install"?"On iPhone, add the app to your Home Screen first, then turn on reminders from there.":support==="denied"&&!on?"Notifications are blocked for this app. Allow them in your phone or browser settings, then come back.":on?"On this device, for "+on+".":"Get a heads-up on due days and the night before Sunday cleaning."}</p>
       {msg&&<p role="status" className="reminder-msg">{msg}</p>}
     </div>
-    {support!=="install"&&(on?<button className="reminder-off" disabled={busy} onClick={turnOff}>Turn off</button>:<button className="reminder-on" disabled={busy} onClick={turnOn}>{busy?"…":"Turn on"}</button>)}
+    {support!=="install"&&(support!=="denied"||on)&&(on?<button className="reminder-off" disabled={busy} onClick={turnOff}>Turn off</button>:<button className="reminder-on" disabled={busy} onClick={turnOn}>{busy?"…":"Turn on"}</button>)}
   </div>;
 }
