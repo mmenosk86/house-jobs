@@ -153,3 +153,6 @@ export const DEFAULT_HOUSE_SETTINGS={
 };
 export const ISSUE_CATEGORIES=["Maintenance","Cleaning","Supplies","Network","Safety","Other"];
 export const ISSUE_PRIORITIES=["low","medium","high","urgent"];
+
+// Comparable fingerprint of a saved weekly setup (same shape and key order as the app's own state).
+export const setupSig=d=>JSON.stringify({brothers:d.brothers||DEFAULT_BROTHERS,jobs:d.jobs||DEFAULT_JOBS,weeks:d.weeks||DEFAULT_WEEKS,semesterName:d.semesterName||"Fall 2026",chairs:d.chairs||{},locks:d.locks||[]});

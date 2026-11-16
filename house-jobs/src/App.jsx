@@ -4,7 +4,7 @@ import {keyOf,reconcileMakeups} from "./houseOpsCore.js";
 import {scheduleWeekly,crewSize,MAX_PER_JOB} from "./weeklyCore.js";
 import {assignSundayJobs,sundayPool,sundayJobList,cancelSunday,restoreSunday,KITCHEN_ID,KITCHEN_MAX} from "./sundayCore.js";
 import {localStoreGet,localStoreSet,sanitizeKey,sanitizeObjKeys,desanitizeObjKeys,auth,initFirebase,fbSet,fbUpdate,fbTransaction,fbGet,fbOnValue,OPS_API,fbOnAuth,fbWriteUser,completionErrorText} from "./firebase.js";
-import {DEFAULT_WEEKS,DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_PROJECTS,AREA_META,AREA_KEYS,STATUS_CYCLE,DIFF_COLORS,DEFAULT_HOUSE_SETTINGS,ISSUE_CATEGORIES,ISSUE_PRIORITIES} from "./constants.js";
+import {DEFAULT_WEEKS,DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_PROJECTS,AREA_META,AREA_KEYS,STATUS_CYCLE,DIFF_COLORS,DEFAULT_HOUSE_SETTINGS,ISSUE_CATEGORIES,ISSUE_PRIORITIES,setupSig} from "./constants.js";
 import {tint,HOLIDAY_THEME,HOLIDAY_CSS} from "./theme.js";
 import {getBrotherNames,generateAssignments,generateSundayAssignments,getKitchenHistory,regenerateSundayWeek,generateWeeklyProjects} from "./schedule.js";
 import {getDueDate,formatDue,generateWeekLabels,detectCurrentWeek} from "./dates.js";
@@ -113,15 +113,18 @@ export default function HouseJobsApp(){
   const skipSunSync=useRef(false);
   const skipProjSync=useRef(false);
   const weeksRef=useRef(DEFAULT_WEEKS);
+  const savedCfgSig=useRef(null); // signature of the weekly setup as last loaded from / saved to the database
   useEffect(()=>{weeksRef.current=weeks;},[weeks]);
   // Each screen opens at the top instead of wherever the last one was scrolled to.
   useEffect(()=>{try{window.scrollTo({top:0});}catch{}},[view,selectedBrother]);
 
-  // Auto-detect current week based on today's date
-
   // ─── INIT ───
   useEffect(()=>{(async()=>{try{
-    const connected=await initFirebase(); setFbConnected(connected);
+    // Demo mode (npm run dev, then open /?demo): manager screens with sample data saved only in this
+    // browser. Never connects to Firebase, and doesn't exist in the deployed app.
+    const demo=import.meta.env.DEV&&new URLSearchParams(window.location.search).has("demo");
+    if(demo)setAdminUnlocked(true);
+    const connected=demo?false:await initFirebase(); setFbConnected(connected);
     if(connected){
       const initialUser=auth.currentUser;
       const initialAdmin=!!initialUser&&!initialUser.isAnonymous&&(await fbGet(`admins/${initialUser.uid}`))===true;
@@ -134,7 +137,7 @@ export default function HouseJobsApp(){
       ]);
       const w=cfg?.weeks||DEFAULT_WEEKS;
       weeksRef.current=w;
-      if(cfg){setBrothers(cfg.brothers||DEFAULT_BROTHERS);setJobs(cfg.jobs||DEFAULT_JOBS);setWeeks(w);setSemesterName(cfg.semesterName||"Fall 2026");setChairs(cfg.chairs||{});setLocks(cfg.locks||[]);}
+      if(cfg){savedCfgSig.current=setupSig(cfg);setBrothers(cfg.brothers||DEFAULT_BROTHERS);setJobs(cfg.jobs||DEFAULT_JOBS);setWeeks(w);setSemesterName(cfg.semesterName||"Fall 2026");setChairs(cfg.chairs||{});setLocks(cfg.locks||[]);}
       if(asg)setAssignments(desanitizeObjKeys(asg,w));else{const a=generateAssignments(cfg?.brothers||DEFAULT_BROTHERS,cfg?.jobs||DEFAULT_JOBS,w,cfg?.chairs,cfg?.locks);setAssignments(a);await fbSet("assignments",sanitizeObjKeys(a)).catch(e=>console.error("Could not save first weekly schedule:",e));}
       if(sunCfg){setEvenPins(sunCfg.evenPins||DEFAULT_EVEN_PINS);setOddPins(sunCfg.oddPins||DEFAULT_ODD_PINS);setSundayJobs(sunCfg.sundayJobs||DEFAULT_SUNDAY_JOBS);}
       if(sunAsg)setSundayAssignments(desanitizeObjKeys(sunAsg,w));else{const sa=generateSundayAssignments(sunCfg?.evenPins||DEFAULT_EVEN_PINS,sunCfg?.oddPins||DEFAULT_ODD_PINS,sunCfg?.sundayJobs||DEFAULT_SUNDAY_JOBS,w);setSundayAssignments(sa);await fbSet("sundayAssignments",sanitizeObjKeys(sa)).catch(e=>console.error("Could not save first Sunday schedule:",e));}
@@ -145,7 +148,7 @@ export default function HouseJobsApp(){
       if(issues)setHouseIssues(Array.isArray(issues)?issues:Object.values(issues));
       if(archiveData)setArchives(archiveData);
       fbOnValue("assignments",d=>{if(skipSync.current){skipSync.current=false;return;}setAssignments(d?desanitizeObjKeys(d,weeksRef.current):{});});
-      fbOnValue("config",d=>{if(d){const nextWeeks=d.weeks||DEFAULT_WEEKS;weeksRef.current=nextWeeks;setBrothers(d.brothers||DEFAULT_BROTHERS);setJobs(d.jobs||DEFAULT_JOBS);setWeeks(nextWeeks);setSemesterName(d.semesterName||"Fall 2026");setChairs(d.chairs||{});setLocks(d.locks||[]);}});
+      fbOnValue("config",d=>{if(d){savedCfgSig.current=setupSig(d);const nextWeeks=d.weeks||DEFAULT_WEEKS;weeksRef.current=nextWeeks;setBrothers(d.brothers||DEFAULT_BROTHERS);setJobs(d.jobs||DEFAULT_JOBS);setWeeks(nextWeeks);setSemesterName(d.semesterName||"Fall 2026");setChairs(d.chairs||{});setLocks(d.locks||[]);}});
       fbOnValue("sundayAssignments",d=>{if(skipSunSync.current){skipSunSync.current=false;return;}setSundayAssignments(d?desanitizeObjKeys(d,weeksRef.current):{});});
       fbOnValue("sundayConfig",d=>{if(d){setEvenPins(d.evenPins||DEFAULT_EVEN_PINS);setOddPins(d.oddPins||DEFAULT_ODD_PINS);setSundayJobs(d.sundayJobs||DEFAULT_SUNDAY_JOBS);}});
       fbOnValue("weeklyProjects",d=>{if(skipProjSync.current){skipProjSync.current=false;return;}setWeeklyProjects(d?desanitizeObjKeys(d,weeksRef.current):{});});
@@ -159,8 +162,16 @@ export default function HouseJobsApp(){
     }else{
       try{
         const cfg=await localStoreGet("housejobs:config"),asg=await localStoreGet("housejobs:assignments");
-        if(cfg?.value){const p=JSON.parse(cfg.value);setBrothers(p.brothers||DEFAULT_BROTHERS);setJobs(p.jobs||DEFAULT_JOBS);setWeeks(p.weeks||DEFAULT_WEEKS);setSemesterName(p.semesterName||"Fall 2026");setChairs(p.chairs||{});setLocks(p.locks||[]);}
-        if(asg?.value)setAssignments(JSON.parse(asg.value));else setAssignments(generateAssignments(DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_WEEKS));
+        if(cfg?.value){const p=JSON.parse(cfg.value);savedCfgSig.current=setupSig(p);setBrothers(p.brothers||DEFAULT_BROTHERS);setJobs(p.jobs||DEFAULT_JOBS);setWeeks(p.weeks||DEFAULT_WEEKS);setSemesterName(p.semesterName||"Fall 2026");setChairs(p.chairs||{});setLocks(p.locks||[]);}
+        if(asg?.value)setAssignments(JSON.parse(asg.value));else{
+          const a=generateAssignments(DEFAULT_BROTHERS,DEFAULT_JOBS,DEFAULT_WEEKS);
+          if(demo){ // a few submissions so the review queue and overdue list have something in them
+            const i=detectCurrentWeek(DEFAULT_WEEKS),now=new Date().toISOString();
+            Object.entries(a[DEFAULT_WEEKS[i]]||{}).slice(0,3).forEach(([,e],k)=>Object.assign(e,{status:"done",proof:{note:["Mopped and wiped everything down.","Done, but we're low on supplies.","All set."][k],supplyStatus:k===1?"low":"ok",supplyNote:k===1?"Trash bags":"",submittedBy:e.assigned?.[0]||"Brother",submittedAt:now}}));
+            Object.values(a[DEFAULT_WEEKS[Math.max(0,i-1)]]||{}).slice(0,2).forEach(e=>{e.status="missed";});
+          }
+          setAssignments(a);
+        }
         const sunCfg=await localStoreGet("housejobs:sundayConfig"),sunAsg=await localStoreGet("housejobs:sundayAssignments");
         if(sunCfg?.value){const p=JSON.parse(sunCfg.value);setEvenPins(p.evenPins||DEFAULT_EVEN_PINS);setOddPins(p.oddPins||DEFAULT_ODD_PINS);setSundayJobs(p.sundayJobs||DEFAULT_SUNDAY_JOBS);}
         if(sunAsg?.value)setSundayAssignments(JSON.parse(sunAsg.value));else setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS));
@@ -279,9 +290,11 @@ export default function HouseJobsApp(){
     return()=>clearTimeout(timer);
   },[persistenceNotice]);
   const weeklySetupSignature=JSON.stringify({brothers,jobs,weeks,semesterName,chairs,locks});
+  // Auto-save the weekly setup after a manager edits it, but not when it merely matches what's already saved
+  // (so opening the app doesn't re-save and flash "Weekly setup saved.").
   useEffect(()=>{
-    if(loading||!adminUnlocked)return;
-    const timer=setTimeout(()=>{saveCfg(brothers,jobs,weeks,semesterName);},650);
+    if(loading||!adminUnlocked||weeklySetupSignature===savedCfgSig.current)return;
+    const timer=setTimeout(()=>{saveCfg(brothers,jobs,weeks,semesterName).then(ok=>{if(ok)savedCfgSig.current=weeklySetupSignature;});},650);
     return()=>clearTimeout(timer);
   },[loading,adminUnlocked,weeklySetupSignature,saveCfg]);
   const saveAssignmentStatus=useCallback(async(week,jobId,status)=>{
@@ -928,12 +941,12 @@ export default function HouseJobsApp(){
             // Count only people expected this Sunday, so hand-added extras can't push it past 100%.
             const totalAssigned=[...new Set([...pool,...makeups])].filter(n=>assignedSet.has(n)).length;
             return<>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-            <div><h2 style={{fontSize:16,fontWeight:700,color:"var(--ink)",marginBottom:4}}>Sunday Cleaning</h2><GroupBadge group={sunWeekData.group} bothGroups={sunWeekData.bothGroups}/></div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10,marginBottom:10}}>
+            <div><h2 className="page-title" style={{marginBottom:4}}>Sunday Cleaning</h2><GroupBadge group={sunWeekData.group} bothGroups={sunWeekData.bothGroups}/></div>
             {adminUnlocked&&<div style={{display:"flex",gap:6,alignItems:"center"}}><select aria-label="Which pins clean this Sunday" value={sunWeekData.bothGroups?"both":sunWeekData.group||"even"} onChange={e=>setSundayGroup(currentWeek,e.target.value)} style={{background:"var(--field)",border:"1px solid color-mix(in srgb, var(--amber) 31%, transparent)",color:"var(--amber)",borderRadius:6,padding:"5px 22px 5px 8px",fontSize:12,fontWeight:600,fontFamily:"inherit"}}><option value="even">Even pins</option><option value="odd">Odd pins</option><option value="both">Both groups</option></select><SmallBtn onClick={()=>reshuffleSundayWeek(currentWeek)} color="var(--purple)">Shuffle</SmallBtn></div>}
           </div>
           <div style={{fontSize:12,color:totalAssigned>=totalPool?"var(--gold)":"var(--amber)",marginBottom:8,fontFamily:"'Space Mono',monospace",fontWeight:600}}>{totalAssigned}/{totalPool} brothers assigned</div>
-          {sunWeekData.jobs?.sun_kitchen&&<div style={{background:"color-mix(in srgb, var(--amber) 6%, transparent)",border:"1px solid color-mix(in srgb, var(--amber) 19%, transparent)",borderRadius:8,padding:"8px 12px",marginBottom:16,fontSize:12,color:"var(--amber)",lineHeight:1.5}}>🍳 Kitchen gets up to {KITCHEN_MAX} people and rotates through the pin roster. Nobody is assigned to kitchen again until the remaining roster has had a turn. Everyone else is spread evenly over the other jobs.</div>}
+          {sunWeekData.jobs?.sun_kitchen&&<div style={{background:"color-mix(in srgb, var(--amber) 6%, transparent)",border:"1px solid color-mix(in srgb, var(--amber) 19%, transparent)",borderRadius:8,padding:"8px 12px",marginBottom:16,fontSize:12,color:"var(--amber)",lineHeight:1.5}}>🍳 Kitchen takes up to {KITCHEN_MAX} and rotates, so nobody repeats until everyone has had a turn. Everyone else is spread evenly.</div>}
           {(()=>{
             const fullPool=[...pool,...makeups];
             const unassignedSun=fullPool.filter(n=>!assignedSet.has(n));
@@ -1291,7 +1304,6 @@ export default function HouseJobsApp(){
           <button onClick={checkPassword} disabled={adminLoading} style={{width:"100%",background:"linear-gradient(135deg,var(--gold),var(--gold-deep))",border:"none",color:"var(--bg)",borderRadius:10,padding:"13px",fontWeight:700,cursor:"pointer",opacity:adminLoading?.6:1}}>{adminLoading?"Signing in...":"Unlock dashboard"}</button>
         </div>}
         {view==="manager"&&adminUnlocked&&<div className="fu">
-          <OpsManager ops={ops} onNavigate={setView}/>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
             <div><h2 style={{fontSize:19,fontWeight:700,color:"var(--ink)"}}>House Manager</h2><p style={{fontSize:12,color:"var(--muted)",marginTop:2}}>Reviews, issues, and assignments</p></div>
             <button onClick={lockAdmin} style={{background:"var(--card)",border:"1px solid var(--line)",color:"var(--muted)",borderRadius:7,padding:"6px 9px",fontSize:11,cursor:"pointer"}}>🔒 Lock</button>
@@ -1299,9 +1311,10 @@ export default function HouseJobsApp(){
           <div className="stat-grid" style={{marginBottom:14}}>
             {[{n:verificationQueue.length,l:"Awaiting review",c:"var(--gold)"},{n:overdueItems.length,l:"Overdue",c:"var(--red)"},{n:openIssues.length,l:"Open issues",c:"var(--amber)"},{n:supplyReports.length,l:"Supply alerts",c:"var(--purple)"}].map(x=><div key={x.l} className="hm-card" style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:700,color:x.c,fontFamily:"'Space Mono',monospace"}}>{x.n}</div><div style={{fontSize:11,color:"var(--muted)",marginTop:3}}>{x.l}</div></div>)}
           </div>
-          <div className="scroll-row" style={{marginBottom:18}}>
+          <div className="quick-links">
             {[["Sunday","sunday","var(--purple)"],["House issues","issues","var(--amber)"],["Setup","setup","var(--gold)"],["Archive","archive","var(--blue)"]].map(([label,target,color])=><button key={label} onClick={()=>target==="archive"?archiveSemester():setView(target)} disabled={target==="archive"&&archiveBusy} style={{minWidth:112,background:`${tint(color,9)}`,border:`1px solid ${tint(color,31)}`,color,borderRadius:9,padding:"10px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{target==="archive"&&archiveBusy?"Saving...":label}</button>)}
           </div>
+          <OpsManager ops={ops} onNavigate={setView}/>
 
           <section className="manager-brief"><div><div className="eyebrow">PENDING ACTIONS</div><h3>{verificationQueue.length?"Review "+verificationQueue.length+" submitted job"+(verificationQueue.length===1?"":"s"):openIssues.length?"Check open house issues":"Review upcoming assignments"}</h3><p>Includes all weeks.</p></div><button onClick={copyManagerBrief}>Copy house brief</button><p role="status">{briefNotice}</p></section>
           <div className="filter-pills">{[["all","All work"],["weekly","Weekly"],["sunday","Sunday"],["project","Projects"]].map(([key,label])=><button key={key} aria-pressed={reviewFilter===key} onClick={()=>setReviewFilter(key)}>{label}</button>)}</div>
@@ -1312,7 +1325,7 @@ export default function HouseJobsApp(){
                 <div style={{flex:1,minWidth:0}}><div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:10,color:item.type==="sunday"?"var(--purple)":item.type==="project"?"var(--pink)":"var(--gold)",fontWeight:700}}>{item.type.toUpperCase()}</span><span style={{fontSize:10,color:"var(--muted)"}}>{item.week}</span></div><div style={{fontSize:14,color:"var(--ink)",fontWeight:600,marginTop:4}}>{item.name}</div><div style={{fontSize:11,color:"var(--muted)",marginTop:4}}>{item.entry?.proof?.submittedBy||item.entry?.completedBy||"Unknown"}{item.entry?.proof?.submittedAt&&` • ${new Date(item.entry.proof.submittedAt).toLocaleString()}`}</div>{item.entry?.proof?.note&&<p style={{fontSize:12,color:"var(--ink-2)",marginTop:6,lineHeight:1.4}}>{item.entry.proof.note}</p>}{item.entry?.proof?.supplyStatus&&item.entry.proof.supplyStatus!=="ok"&&<p style={{fontSize:11,color:"var(--amber)",marginTop:5}}>Supply {item.entry.proof.supplyStatus}: {item.entry.proof.supplyNote||"No details"}</p>}</div>
                 {item.entry?.proof?.photo&&<img src={item.entry.proof.photo} alt="Completion proof" style={{width:76,height:76,objectFit:"cover",borderRadius:8,flexShrink:0}}/>}
               </div>
-              <div style={{display:"flex",gap:8,marginTop:10}}><button onClick={()=>reviewItem(item,true)} style={{flex:1,background:"color-mix(in srgb, var(--gold) 13%, transparent)",border:"1px solid color-mix(in srgb, var(--gold) 38%, transparent)",color:"var(--gold)",borderRadius:7,padding:"8px",fontWeight:700,cursor:"pointer"}}>Verify</button><button onClick={()=>reviewItem(item,false)} style={{flex:1,background:"color-mix(in srgb, var(--red) 9%, transparent)",border:"1px solid color-mix(in srgb, var(--red) 31%, transparent)",color:"var(--red)",borderRadius:7,padding:"8px",fontWeight:700,cursor:"pointer"}}>Reject</button></div>
+              <div style={{display:"flex",gap:8,marginTop:10}}><button onClick={()=>reviewItem(item,true)} style={{flex:1,background:"var(--green)",border:"1px solid var(--green)",color:"#FFFFFF",borderRadius:10,padding:"10px",minHeight:44,fontWeight:800,cursor:"pointer"}}>✓ Verify</button><button onClick={()=>reviewItem(item,false)} style={{flex:1,background:"var(--card)",border:"1px solid color-mix(in srgb, var(--red) 40%, transparent)",color:"var(--red)",borderRadius:10,padding:"10px",minHeight:44,fontWeight:700,cursor:"pointer"}}>Send back</button></div>
             </div>)}
           </div>
 
@@ -1336,8 +1349,8 @@ export default function HouseJobsApp(){
             </section>
             <section className="hm-card hm-wide">
               <h3 style={{fontSize:12,color:"var(--blue)",letterSpacing:".08em",marginBottom:10}}>FAIRNESS</h3>
-              <div style={{overflowX:"auto"}}>{fairnessRows.map(row=><div key={row.name} style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,alignItems:"center",padding:"7px 0",borderBottom:"1px solid var(--line)",minWidth:350}}><span style={{fontSize:12,color:"var(--ink)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</span><span title="Weekly" style={{fontSize:11,color:"var(--muted)",textAlign:"center"}}>{row.total}</span><span title="Sunday" style={{fontSize:11,color:"var(--purple)",textAlign:"center"}}>{row.sunday}</span><span title="Kitchen" style={{fontSize:11,color:"var(--amber)",textAlign:"center"}}>{row.kitchen}</span><span title="Bathrooms" style={{fontSize:11,color:"var(--cyan)",textAlign:"center"}}>{row.bathrooms}</span><span title="Project points" style={{fontSize:11,color:"var(--pink)",textAlign:"center"}}>{row.projectPoints}</span></div>)}</div>
-              <div style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,marginTop:7,fontSize:9,color:"var(--muted)"}}><span></span><span>WK</span><span>SUN</span><span>KIT</span><span>BATH</span><span>PTS</span></div>
+              <div style={{overflowX:"auto"}}><div style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,marginBottom:4,fontSize:10,fontWeight:700,minWidth:350,color:"var(--muted)"}}><span></span><span>WK</span><span>SUN</span><span>KIT</span><span>BATH</span><span>PTS</span></div>{fairnessRows.map(row=><div key={row.name} style={{display:"grid",gridTemplateColumns:"minmax(105px,1fr) repeat(5,42px)",gap:4,alignItems:"center",padding:"7px 0",borderBottom:"1px solid var(--line)",minWidth:350}}><span style={{fontSize:12,color:"var(--ink)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</span><span title="Weekly" style={{fontSize:11,color:"var(--muted)",textAlign:"center"}}>{row.total}</span><span title="Sunday" style={{fontSize:11,color:"var(--purple)",textAlign:"center"}}>{row.sunday}</span><span title="Kitchen" style={{fontSize:11,color:"var(--amber)",textAlign:"center"}}>{row.kitchen}</span><span title="Bathrooms" style={{fontSize:11,color:"var(--cyan)",textAlign:"center"}}>{row.bathrooms}</span><span title="Project points" style={{fontSize:11,color:"var(--pink)",textAlign:"center"}}>{row.projectPoints}</span></div>)}</div>
+              
             </section>
             <section className="hm-card hm-wide">
               <h3 style={{fontSize:12,color:"var(--muted)",letterSpacing:".08em",marginBottom:10}}>DEADLINES</h3>
@@ -1361,6 +1374,7 @@ export default function HouseJobsApp(){
         </div>}
 
         {view==="setup"&&adminUnlocked&&<div className="fu">
+          <button className="back-link" onClick={()=>setView("manager")}>‹ Manager</button>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
             <h2 style={{fontSize:16,fontWeight:700,color:"var(--ink)"}}>Weekly Setup</h2>
             <button onClick={lockAdmin} style={{background:"var(--card)",border:"1px solid var(--line)",color:"var(--muted)",borderRadius:6,padding:"5px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>🔒 Lock</button>
