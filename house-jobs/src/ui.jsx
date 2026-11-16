@@ -1,4 +1,4 @@
-import {useState} from "react";
+import {useState,useEffect} from "react";
 import {STATUS_CONFIG,DIFF_COLORS} from "./constants.js";
 import {tint} from "./theme.js";
 import {formatDue} from "./dates.js";
@@ -59,4 +59,23 @@ export function TaskFocus({tasks,name,week,onComplete,onProjects}){
       </article>;
     })}
   </section>;
+}
+
+// "Add to home screen" banner for phones. Android/Chrome gets a one-tap install button; iPhone gets the
+// two-step Share → Add to Home Screen hint. Hidden once installed or dismissed on this device.
+export function InstallBanner(){
+  const standalone=typeof window!=="undefined"&&(window.matchMedia?.("(display-mode: standalone)").matches||window.navigator.standalone);
+  const ios=typeof navigator!=="undefined"&&/iphone|ipad|ipod/i.test(navigator.userAgent);
+  const[prompt,setPrompt]=useState(null);
+  const[dismissed,setDismissed]=useState(()=>{try{return localStorage.getItem("housejobs:install-dismissed")==="1";}catch{return false;}});
+  useEffect(()=>{const grab=e=>{e.preventDefault();setPrompt(e);};window.addEventListener("beforeinstallprompt",grab);return()=>window.removeEventListener("beforeinstallprompt",grab);},[]);
+  if(standalone||dismissed||(!prompt&&!ios))return null;
+  const dismiss=()=>{setDismissed(true);try{localStorage.setItem("housejobs:install-dismissed","1");}catch{}};
+  return <div className="install-banner" role="region" aria-label="Install the app">
+    <img src="/icons/icon-192.png" alt="" width="44" height="44"/>
+    <div style={{flex:1,minWidth:0}}><strong>Get the House Jobs app</strong>
+      <p>{prompt?"Install it for one-tap access and job reminders.":<>Tap <b>Share</b> <span aria-hidden="true">⎋</span> then <b>Add to Home Screen</b>.</>}</p></div>
+    {prompt&&<button className="install-go" onClick={async()=>{prompt.prompt();await prompt.userChoice.catch(()=>{});setPrompt(null);}}>Install</button>}
+    <button className="install-x" aria-label="Dismiss" onClick={dismiss}>×</button>
+  </div>;
 }

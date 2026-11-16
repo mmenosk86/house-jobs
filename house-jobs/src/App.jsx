@@ -9,7 +9,7 @@ import {tint,HOLIDAY_THEME,HOLIDAY_CSS} from "./theme.js";
 import {getBrotherNames,generateAssignments,generateSundayAssignments,getKitchenHistory,regenerateSundayWeek,generateWeeklyProjects} from "./schedule.js";
 import {getDueDate,formatDue,generateWeekLabels,detectCurrentWeek} from "./dates.js";
 import {BASE_CSS,APP_CSS} from "./styles.js";
-import {StatusBadge,Input,SmallBtn,SyncDot,GroupBadge,DiffBadge,HOUSE_TABS,NavIcon,HOUSE_SUBVIEWS,TASK_LABELS,TaskFocus} from "./ui.jsx";
+import {StatusBadge,Input,SmallBtn,SyncDot,GroupBadge,DiffBadge,HOUSE_TABS,NavIcon,HOUSE_SUBVIEWS,TASK_LABELS,TaskFocus,InstallBanner} from "./ui.jsx";
 
 /*
  * HOUSE JOBS — HOUSE HQ v3 — HOUSE OPERATIONS (Spark, Firebase Auth, no Storage)
@@ -809,6 +809,7 @@ export default function HouseJobsApp(){
               </div>
             </div>}
 
+            <InstallBanner/>
             <OpsPersonal ops={ops} name={myName} onNavigate={setView}/>
             <TaskFocus tasks={personalTasks} name={myName} week={currentWeek} onProjects={()=>setView("projects")} onComplete={t=>openCompletion(t.type,currentWeek,t.id,t.index,t.name)}/>
 
