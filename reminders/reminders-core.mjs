@@ -40,3 +40,50 @@ export function buildReminders({kind,week,weekday,force=false,only="",settings:r
   }
   return{messages};
 }
+
+// ─── Manager alerts ───
+// Everything that needs the manager: submitted jobs (weekly, Sunday, projects, WOTH/event jobs), pending absence and
+// swap requests, open house issues and supply reports. Each item has a stable id and a timestamp.
+export function managerItems({config,assignments,sundayAssignments,sundayConfig,weeklyProjects,houseOps,houseIssues}){
+  const items=[];
+  const weeklyNames=Object.fromEntries((config?.jobs||[]).map(j=>[key(j.id),j.name]));
+  const by=p=>p?.submittedBy?` (${p.submittedBy})`:"";
+  for(const [wk,rows] of Object.entries(assignments||{}))for(const [id,e] of Object.entries(rows||{}))
+    if(e?.status==="done"&&e.proof?.submittedAt)items.push({id:`w:${wk}:${id}:${e.proof.submittedAt}`,ts:e.proof.submittedAt,group:"jobs",text:(weeklyNames[id]||id)+by(e.proof)});
+  for(const [wk,row] of Object.entries(sundayAssignments||{})){
+    const names=Object.fromEntries([...(sundayConfig?.sundayJobs||[]),...(row?.tempJobs||[])].map(j=>[key(j.id),j.name]));
+    for(const [id,e] of Object.entries(row?.jobs||{}))
+      if(e?.status==="done"&&e.proof?.submittedAt)items.push({id:`s:${wk}:${id}:${e.proof.submittedAt}`,ts:e.proof.submittedAt,group:"jobs",text:`Sunday ${names[id]||"job"}`+by(e.proof)});
+  }
+  for(const [wk,row] of Object.entries(weeklyProjects||{}))for(const p of Object.values(row?.projects||{}))
+    if(p?.status==="done"&&p.proof?.submittedAt)items.push({id:`p:${wk}:${p.id}:${p.proof.submittedAt}`,ts:p.proof.submittedAt,group:"jobs",text:`Project: ${p.name}`+by(p.proof)});
+  for(const [eid,ev] of Object.entries(houseOps?.events||{}))for(const [tid,t] of Object.entries(ev?.tasks||{}))
+    if(t?.status==="done"&&t.proof?.submittedAt)items.push({id:`e:${eid}:${tid}:${t.proof.submittedAt}`,ts:t.proof.submittedAt,group:"jobs",text:`${ev.title||"Event"}: ${t.name}`+by(t.proof)});
+  for(const [rid,r] of Object.entries(houseOps?.requests||{}))
+    if(r?.status==="pending"&&r.createdAt)items.push({id:`r:${rid}`,ts:r.createdAt,group:"requests",text:r.kind==="absence"?`${r.requesterName} absence ${r.start||""}${r.end&&r.end!==r.start?"–"+r.end:""}`.trim():`${r.requesterName} wants to swap with ${r.targetName||"someone"}`});
+  for(const [iid,i] of Object.entries(houseIssues||{}))
+    if(i&&i.status!=="closed"&&i.createdAt)items.push({id:`i:${i.id??iid}`,ts:i.createdAt,group:"issues",urgent:i.priority==="urgent",text:`${i.priority==="urgent"?"URGENT: ":""}${String(i.description||"Issue").slice(0,70)}${i.location?` (${i.location})`:""}`});
+  for(const [sid,s] of Object.entries(houseOps?.supplies||{}))
+    if(s?.status==="open"&&s.createdAt)items.push({id:`u:${sid}`,ts:s.createdAt,group:"supplies",text:`${s.item}${s.severity==="out"?" (out)":" (low)"}`});
+  return items;
+}
+
+const LOOKBACK_MIN=60,REMEMBER_MIN=120; // tolerate phones with slightly wrong clocks and late GitHub runs
+// Returns {message|null, state}. state = {cursor, recent:[ids]} kept in the database between runs.
+// The first run only records a starting point, so turning this on doesn't send a flood of old items.
+export function buildManagerAlert(data,state,now=new Date()){
+  const items=managerItems(data);
+  const nowIso=now.toISOString();
+  const recentCut=new Date(now-REMEMBER_MIN*60000).toISOString();
+  const nextState={cursor:nowIso,recent:items.filter(i=>i.ts>recentCut).map(i=>i.id)};
+  if(!state?.cursor)return{message:null,state:nextState};
+  const since=new Date(new Date(state.cursor)-LOOKBACK_MIN*60000).toISOString();
+  const seen=new Set(state.recent||[]);
+  const fresh=items.filter(i=>i.ts>since&&!seen.has(i.id)).sort((a,b)=>a.ts.localeCompare(b.ts));
+  if(!fresh.length)return{message:null,state:nextState};
+  const groups=[["jobs","✓ Submitted"],["requests","📅 Requests"],["issues","⚠️ Issues"],["supplies","📦 Supplies"]];
+  const lines=groups.map(([g,label])=>{const xs=fresh.filter(i=>i.group===g);if(!xs.length)return null;
+    const shown=xs.slice(0,3).map(i=>i.text).join(", ");return`${label}: ${shown}${xs.length>3?` +${xs.length-3} more`:""}`;}).filter(Boolean);
+  const urgent=fresh.some(i=>i.urgent);
+  return{message:{title:`${urgent?"Urgent · ":""}House manager: ${fresh.length} new`,body:lines.join("\n"),url:"/?view=manager",tag:`manager-${nowIso}`},state:nextState,count:fresh.length};
+}

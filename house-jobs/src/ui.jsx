@@ -2,7 +2,7 @@ import {useState,useEffect} from "react";
 import {STATUS_CONFIG,DIFF_COLORS} from "./constants.js";
 import {tint} from "./theme.js";
 import {formatDue} from "./dates.js";
-import {VAPID_KEY,pushSupport,enablePush,disablePush} from "./firebase.js";
+import {VAPID_KEY,pushSupport,enablePush,disablePush,enableManagerAlerts,disableManagerAlerts} from "./firebase.js";
 
 // Small shared UI pieces: badges, buttons, nav icons and the My jobs task list.
 // ─── COMPONENTS ───
@@ -107,5 +107,31 @@ export function ReminderToggle({name,connected}){
       {msg&&<p role="status" className="reminder-msg">{msg}</p>}
     </div>
     {support!=="install"&&(support!=="denied"||on)&&(on?<button className="reminder-off" disabled={busy} onClick={turnOff}>Turn off</button>:<button className="reminder-on" disabled={busy} onClick={turnOn}>{busy?"…":"Turn on"}</button>)}
+  </div>;
+}
+
+// Manager alerts switch: new job submissions, absence/swap requests, issues and supply reports, checked every ~15 min.
+export function ManagerAlertsToggle({label,connected}){
+  const key="housejobs:manager-alerts";
+  const[on,setOn]=useState(()=>{try{return localStorage.getItem(key)==="1";}catch{return false;}});
+  const[busy,setBusy]=useState(false),[msg,setMsg]=useState("");
+  const support=pushSupport();
+  if(!VAPID_KEY||!connected||support==="unsupported")return null;
+  const remember=v=>{try{v?localStorage.setItem(key,"1"):localStorage.removeItem(key);}catch{}};
+  async function toggle(){
+    setBusy(true);setMsg("");
+    try{
+      if(on){await disableManagerAlerts();setOn(false);remember(false);}
+      else{await enableManagerAlerts(label);setOn(true);remember(true);setMsg("You'll get an alert within about 15 minutes of new submissions, requests and reports.");}
+    }catch(e){setMsg(e.message||"Couldn't change manager alerts.");}finally{setBusy(false);}
+  }
+  return <div className="reminder-card">
+    <span className="reminder-bell" aria-hidden="true">📣</span>
+    <div style={{flex:1,minWidth:0}}>
+      <strong>{on?"Manager alerts are on":"Manager alerts"}</strong>
+      <p>{support==="install"?"On iPhone, add the app to your Home Screen first, then turn this on from there.":support==="denied"&&!on?"Notifications are blocked for this app. Allow them in your phone or browser settings, then come back.":on?"This device gets alerts for new submissions, requests, issues and supplies.":"Get notified when brothers submit jobs, request absences or swaps, or report issues and supplies."}</p>
+      {msg&&<p role="status" className="reminder-msg">{msg}</p>}
+    </div>
+    {support!=="install"&&(support!=="denied"||on)&&<button className={on?"reminder-off":"reminder-on"} disabled={busy} onClick={toggle}>{busy?"…":on?"Turn off":"Turn on"}</button>}
   </div>;
 }

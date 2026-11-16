@@ -10,7 +10,7 @@ import {getBrotherNames,generateAssignments,generateSundayAssignments,getKitchen
 import {getDueDate,formatDue,generateWeekLabels,detectCurrentWeek} from "./dates.js";
 import {BASE_CSS,APP_CSS} from "./styles.js";
 import SemesterWizard from "./SemesterWizard.jsx";
-import {StatusBadge,Input,SmallBtn,SyncDot,GroupBadge,DiffBadge,HOUSE_TABS,NavIcon,HOUSE_SUBVIEWS,TASK_LABELS,TaskFocus,InstallBanner,ReminderToggle} from "./ui.jsx";
+import {StatusBadge,Input,SmallBtn,SyncDot,GroupBadge,DiffBadge,HOUSE_TABS,NavIcon,HOUSE_SUBVIEWS,TASK_LABELS,TaskFocus,InstallBanner,ReminderToggle,ManagerAlertsToggle} from "./ui.jsx";
 
 /*
  * HOUSE JOBS — HOUSE HQ v3 — HOUSE OPERATIONS (Spark, Firebase Auth, no Storage)
@@ -121,6 +121,8 @@ export default function HouseJobsApp(){
   // Each screen opens at the top instead of wherever the last one was scrolled to.
   useEffect(()=>{try{window.scrollTo({top:0});}catch{}},[view,selectedBrother]);
 
+  // A notification can open a specific screen, e.g. /?view=manager.
+  useEffect(()=>{try{const v=new URLSearchParams(window.location.search).get("view");if(v&&/^[a-z_]+$/.test(v))setView(v);}catch{}},[]);
   // ─── INIT ───
   useEffect(()=>{(async()=>{try{
     // Demo mode (npm run dev, then open /?demo): manager screens with sample data saved only in this
@@ -1340,6 +1342,7 @@ export default function HouseJobsApp(){
             <div><h2 style={{fontSize:19,fontWeight:700,color:"var(--ink)"}}>House Manager</h2><p style={{fontSize:12,color:"var(--muted)",marginTop:2}}>Reviews, issues, and assignments</p></div>
             <button onClick={lockAdmin} style={{background:"var(--card)",border:"1px solid var(--line)",color:"var(--muted)",borderRadius:7,padding:"6px 9px",fontSize:11,cursor:"pointer"}}>🔒 Lock</button>
           </div>
+          <ManagerAlertsToggle label={authUser?.email||adminEmail||"Manager"} connected={fbConnected}/>
           <div className="stat-grid" style={{marginBottom:14}}>
             {[{n:verificationQueue.length,l:"Awaiting review",c:"var(--gold)"},{n:overdueItems.length,l:"Overdue",c:"var(--red)"},{n:openIssues.length,l:"Open issues",c:"var(--amber)"},{n:supplyReports.length,l:"Supply alerts",c:"var(--purple)"}].map(x=><div key={x.l} className="hm-card" style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:700,color:x.c,fontFamily:"'Space Mono',monospace"}}>{x.n}</div><div style={{fontSize:11,color:"var(--muted)",marginTop:3}}>{x.l}</div></div>)}
           </div>

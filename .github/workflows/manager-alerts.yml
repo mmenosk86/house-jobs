@@ -1,0 +1,39 @@
+# Every ~15 minutes: alert managers about new job submissions, absence/swap requests, issues and supply reports.
+# Free on public repos. GitHub may run it a few minutes late at busy times.
+name: Manager alerts
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: "Dry run: show what would be sent, send nothing"
+        type: boolean
+        default: false
+concurrency:
+  group: manager-alerts
+  cancel-in-progress: false
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    env:
+      HAS_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+    defaults:
+      run:
+        working-directory: reminders
+    steps:
+      - uses: actions/checkout@v5
+        if: env.HAS_SECRET == 'true'
+      - uses: actions/setup-node@v5
+        if: env.HAS_SECRET == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: reminders/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        if: env.HAS_SECRET == 'true'
+      - name: Send manager alerts
+        if: env.HAS_SECRET == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node manager-alerts.mjs ${{ inputs.dry && '--dry' || '' }}

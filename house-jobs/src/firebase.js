@@ -83,21 +83,35 @@ export function pushSupport(){
   if(!("serviceWorker" in navigator)||!("Notification" in window)||!("PushManager" in window))return ios&&!standalone?"install":"unsupported";
   return Notification.permission;
 }
-// Ask permission, subscribe this device and save it under the brother's name so the reminder script can find it.
-export async function enablePush(name){
+// Ask permission and get this device's push address (the same one is reused for reminders and manager alerts).
+async function devicePushToken(){
   if(!VAPID_KEY)throw new Error("Reminders aren't set up yet.");
   if(!firebaseReady||!auth?.currentUser)throw new Error("Connect to the internet and try again.");
   const permission=await Notification.requestPermission();
   if(permission!=="granted")throw new Error(permission==="denied"?"Notifications are blocked for this site. Allow them in your browser or phone settings.":"Notifications weren't allowed.");
   const{getMessaging,getToken,isSupported}=await import(MESSAGING);
-  if(!(await isSupported()))throw new Error("This browser can't receive reminders.");
+  if(!(await isSupported()))throw new Error("This browser can't receive notifications.");
   const registration=await navigator.serviceWorker.ready;
   const token=await getToken(getMessaging(fbApp),{vapidKey:VAPID_KEY,serviceWorkerRegistration:registration});
-  if(!token)throw new Error("Couldn't turn on reminders. Try again.");
-  await fbSet(`pushTokens/${auth.currentUser.uid}`,{name,token,updatedAt:new Date().toISOString(),device:navigator.userAgent.slice(0,120)});
+  if(!token)throw new Error("Couldn't turn on notifications. Try again.");
   return token;
 }
+const deviceInfo=()=>navigator.userAgent.slice(0,120);
+// Job reminders: saved under the brother's name so the reminder script can find his jobs.
+export async function enablePush(name){
+  const token=await devicePushToken();
+  await fbSet(`pushTokens/${auth.currentUser.uid}`,{name,token,updatedAt:new Date().toISOString(),device:deviceInfo()});
+  return token;
+}
+// Turning one kind off just forgets this device for it; the device stays subscribed for the other kind.
 export async function disablePush(){
-  try{const{getMessaging,deleteToken}=await import(MESSAGING);await deleteToken(getMessaging(fbApp));}catch{}
   if(auth?.currentUser)await fbSet(`pushTokens/${auth.currentUser.uid}`,null);
+}
+// Manager alerts (new submissions, requests, issues). Only managers can write here.
+export async function enableManagerAlerts(label){
+  const token=await devicePushToken();
+  await fbSet(`managerTokens/${auth.currentUser.uid}`,{label:label||"Manager",token,updatedAt:new Date().toISOString(),device:deviceInfo()});
+}
+export async function disableManagerAlerts(){
+  if(auth?.currentUser)await fbSet(`managerTokens/${auth.currentUser.uid}`,null);
 }
