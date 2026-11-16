@@ -23,16 +23,23 @@ on:
 jobs:
   remind:
     runs-on: ubuntu-latest
+    # Skip quietly until the FIREBASE_SERVICE_ACCOUNT secret has been added (no daily failure emails).
+    env:
+      HAS_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
     defaults:
       run:
         working-directory: reminders
     steps:
       - uses: actions/checkout@v4
+        if: env.HAS_SECRET == 'true'
       - uses: actions/setup-node@v4
+        if: env.HAS_SECRET == 'true'
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
+        if: env.HAS_SECRET == 'true'
       - name: Send reminders
+        if: env.HAS_SECRET == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           KIND: ${{ github.event_name == 'workflow_dispatch' && inputs.kind || (github.event.schedule == '30 23 * * 6' && 'sunday' || 'weekly') }}
