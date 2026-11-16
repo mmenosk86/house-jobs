@@ -43,7 +43,7 @@ for(const m of result.messages){
     sent++;console.log(`Sent to ${m.name}: ${m.body}`);
   }catch(e){
     const code=e?.errorInfo?.code||e?.code||"";
-    console.warn(`Couldn't reach ${m.name} (${code||e.message})`);
+    console.warn(`Couldn't reach ${m.name} (${code||"error"}): ${e?.message||e}`);
     if(/registration-token-not-registered|invalid-registration-token|invalid-argument/.test(code))stale.push(m.uid);
   }
 }
