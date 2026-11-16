@@ -2,6 +2,7 @@
 // Run by .github/workflows/reminders.yml:
 //   --kind=weekly  on the weekly due day: "Your Kitchen is due today at 6:00 PM"
 //   --kind=sunday  on Saturday evening:   "Sunday cleaning tomorrow: you're on Basement"
+//   --kind=test    with --only="Name": a test notification to that brother's devices
 // Options: --dry (print instead of send), --only="Name" (just one brother, for testing), --force (ignore the day check)
 // Needs FIREBASE_SERVICE_ACCOUNT (the service account JSON) in the environment.
 import admin from "firebase-admin";
@@ -13,7 +14,7 @@ const TZ="America/Detroit";
 
 const args=Object.fromEntries(process.argv.slice(2).map(a=>{const[k,...v]=a.replace(/^--/,"").split("=");return[k,v.length?v.join("="):"true"];}));
 const kind=args.kind,dry=args.dry==="true";
-if(!["weekly","sunday"].includes(kind)){console.error("Use --kind=weekly or --kind=sunday");process.exit(1);}
+if(!["weekly","sunday","test"].includes(kind)){console.error("Use --kind=weekly, --kind=sunday or --kind=test");process.exit(1);}
 if(!process.env.FIREBASE_SERVICE_ACCOUNT){console.error("FIREBASE_SERVICE_ACCOUNT is not set.");process.exit(1);}
 
 // "Today" in Houghton, as a local date at noon (the runner itself is on UTC).

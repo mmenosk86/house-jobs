@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       kind:
-        description: "weekly or sunday"
+        description: "weekly, sunday, or test (test needs a name below)"
         required: true
         default: sunday
       only:
@@ -30,9 +30,9 @@ jobs:
       run:
         working-directory: reminders
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: env.HAS_SECRET == 'true'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: env.HAS_SECRET == 'true'
         with:
           node-version: 22

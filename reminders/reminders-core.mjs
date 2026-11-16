@@ -12,6 +12,13 @@ export function buildReminders({kind,week,weekday,force=false,only="",settings:r
   const todo=new Map();
   const add=(names,job)=>(names||[]).forEach(n=>{const k=String(n).trim().toLowerCase();if(!want||k===want)todo.set(k,[...(todo.get(k)||[]),job]);});
   let title,bodyFor;
+  if(kind==="test"){
+    // Test notification to one brother's devices, whether or not he has jobs.
+    if(!want)return{skip:"A test needs a name in 'Only send to'."};
+    const messages=Object.entries(tokens||{}).filter(([,t])=>t?.token&&String(t.name||"").trim().toLowerCase()===want)
+      .map(([uid,t])=>({uid,name:t.name,token:t.token,title:"ΣΦΕ House reminders",body:"Reminders are working on this device. 🎄",tag:"test"}));
+    return messages.length?{messages}:{skip:`No devices with reminders turned on for "${only}". Turn them on in the app first.`};
+  }
   if(kind==="weekly"){
     if(weekday!==Number(settings.weeklyDueDay)&&!force)return{skip:"Today isn't the weekly due day."};
     const names=Object.fromEntries((config?.jobs||[]).map(j=>[key(j.id),j.name]));

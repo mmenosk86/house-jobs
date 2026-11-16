@@ -35,3 +35,10 @@ test("--only sends to just that brother",()=>{
   const {messages}=buildReminders({kind:"weekly",week:"w",weekday:5,only:"mason menosky",config,rows,tokens});
   assert.deepEqual(messages.map(m=>m.name),["Mason Menosky"]);
 });
+
+test("test kind: sends to that brother's devices even with no jobs, needs a name",()=>{
+  assert.ok(buildReminders({kind:"test",week:"w",weekday:2,tokens}).skip);
+  assert.ok(buildReminders({kind:"test",week:"w",weekday:2,only:"Nobody Here",tokens}).skip);
+  const {messages}=buildReminders({kind:"test",week:"w",weekday:2,only:"reese c",tokens});
+  assert.deepEqual(messages.map(m=>m.token),["t2","t4"]);
+});
