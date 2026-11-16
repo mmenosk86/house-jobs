@@ -9,6 +9,7 @@ import {tint,HOLIDAY_THEME,HOLIDAY_CSS} from "./theme.js";
 import {getBrotherNames,generateAssignments,generateSundayAssignments,getKitchenHistory,regenerateSundayWeek,generateWeeklyProjects} from "./schedule.js";
 import {getDueDate,formatDue,generateWeekLabels,detectCurrentWeek} from "./dates.js";
 import {BASE_CSS,APP_CSS} from "./styles.js";
+import SemesterWizard from "./SemesterWizard.jsx";
 import {StatusBadge,Input,SmallBtn,SyncDot,GroupBadge,DiffBadge,HOUSE_TABS,NavIcon,HOUSE_SUBVIEWS,TASK_LABELS,TaskFocus,InstallBanner} from "./ui.jsx";
 
 /*
@@ -42,6 +43,8 @@ export default function HouseJobsApp(){
   const[evenPins,setEvenPins]=useState(DEFAULT_EVEN_PINS);
   const[oddPins,setOddPins]=useState(DEFAULT_ODD_PINS);
   const[sundayJobs,setSundayJobs]=useState(DEFAULT_SUNDAY_JOBS);
+  // Members off the pin lists for now (co-op, inactive): [{name,group,reason,since}]. Shown in the next semester wizard.
+  const[awayMembers,setAwayMembers]=useState([]);
   const[sundayAssignments,setSundayAssignments]=useState({});
   const[sundayEditingJob,setSundayEditingJob]=useState(null);
   const[sundayEditNames,setSundayEditNames]=useState("");
@@ -139,7 +142,7 @@ export default function HouseJobsApp(){
       weeksRef.current=w;
       if(cfg){savedCfgSig.current=setupSig(cfg);setBrothers(cfg.brothers||DEFAULT_BROTHERS);setJobs(cfg.jobs||DEFAULT_JOBS);setWeeks(w);setSemesterName(cfg.semesterName||"Fall 2026");setChairs(cfg.chairs||{});setLocks(cfg.locks||[]);}
       if(asg)setAssignments(desanitizeObjKeys(asg,w));else{const a=generateAssignments(cfg?.brothers||DEFAULT_BROTHERS,cfg?.jobs||DEFAULT_JOBS,w,cfg?.chairs,cfg?.locks);setAssignments(a);await fbSet("assignments",sanitizeObjKeys(a)).catch(e=>console.error("Could not save first weekly schedule:",e));}
-      if(sunCfg){setEvenPins(sunCfg.evenPins||DEFAULT_EVEN_PINS);setOddPins(sunCfg.oddPins||DEFAULT_ODD_PINS);setSundayJobs(sunCfg.sundayJobs||DEFAULT_SUNDAY_JOBS);}
+      if(sunCfg){setEvenPins(sunCfg.evenPins||DEFAULT_EVEN_PINS);setOddPins(sunCfg.oddPins||DEFAULT_ODD_PINS);setSundayJobs(sunCfg.sundayJobs||DEFAULT_SUNDAY_JOBS);setAwayMembers(sunCfg.away||[]);}
       if(sunAsg)setSundayAssignments(desanitizeObjKeys(sunAsg,w));else{const sa=generateSundayAssignments(sunCfg?.evenPins||DEFAULT_EVEN_PINS,sunCfg?.oddPins||DEFAULT_ODD_PINS,sunCfg?.sundayJobs||DEFAULT_SUNDAY_JOBS,w);setSundayAssignments(sa);await fbSet("sundayAssignments",sanitizeObjKeys(sa)).catch(e=>console.error("Could not save first Sunday schedule:",e));}
       if(projCfg)setProjects(projCfg);
       if(projAsg)setWeeklyProjects(desanitizeObjKeys(projAsg,w));else{const wp=generateWeeklyProjects(projCfg||DEFAULT_PROJECTS,w);setWeeklyProjects(wp);await fbSet("weeklyProjects",sanitizeObjKeys(wp)).catch(e=>console.error("Could not save first project schedule:",e));}
@@ -150,7 +153,7 @@ export default function HouseJobsApp(){
       fbOnValue("assignments",d=>{if(skipSync.current){skipSync.current=false;return;}setAssignments(d?desanitizeObjKeys(d,weeksRef.current):{});});
       fbOnValue("config",d=>{if(d){savedCfgSig.current=setupSig(d);const nextWeeks=d.weeks||DEFAULT_WEEKS;weeksRef.current=nextWeeks;setBrothers(d.brothers||DEFAULT_BROTHERS);setJobs(d.jobs||DEFAULT_JOBS);setWeeks(nextWeeks);setSemesterName(d.semesterName||"Fall 2026");setChairs(d.chairs||{});setLocks(d.locks||[]);}});
       fbOnValue("sundayAssignments",d=>{if(skipSunSync.current){skipSunSync.current=false;return;}setSundayAssignments(d?desanitizeObjKeys(d,weeksRef.current):{});});
-      fbOnValue("sundayConfig",d=>{if(d){setEvenPins(d.evenPins||DEFAULT_EVEN_PINS);setOddPins(d.oddPins||DEFAULT_ODD_PINS);setSundayJobs(d.sundayJobs||DEFAULT_SUNDAY_JOBS);}});
+      fbOnValue("sundayConfig",d=>{if(d){setEvenPins(d.evenPins||DEFAULT_EVEN_PINS);setOddPins(d.oddPins||DEFAULT_ODD_PINS);setSundayJobs(d.sundayJobs||DEFAULT_SUNDAY_JOBS);setAwayMembers(d.away||[]);}});
       fbOnValue("weeklyProjects",d=>{if(skipProjSync.current){skipProjSync.current=false;return;}setWeeklyProjects(d?desanitizeObjKeys(d,weeksRef.current):{});});
       fbOnValue("projectsConfig",d=>{if(d)setProjects(d);});
       fbOnValue("announcements",d=>setAnnouncements(Array.isArray(d)?d:[]));
@@ -173,7 +176,7 @@ export default function HouseJobsApp(){
           setAssignments(a);
         }
         const sunCfg=await localStoreGet("housejobs:sundayConfig"),sunAsg=await localStoreGet("housejobs:sundayAssignments");
-        if(sunCfg?.value){const p=JSON.parse(sunCfg.value);setEvenPins(p.evenPins||DEFAULT_EVEN_PINS);setOddPins(p.oddPins||DEFAULT_ODD_PINS);setSundayJobs(p.sundayJobs||DEFAULT_SUNDAY_JOBS);}
+        if(sunCfg?.value){const p=JSON.parse(sunCfg.value);setEvenPins(p.evenPins||DEFAULT_EVEN_PINS);setOddPins(p.oddPins||DEFAULT_ODD_PINS);setSundayJobs(p.sundayJobs||DEFAULT_SUNDAY_JOBS);setAwayMembers(p.away||[]);}
         if(sunAsg?.value)setSundayAssignments(JSON.parse(sunAsg.value));else setSundayAssignments(generateSundayAssignments(DEFAULT_EVEN_PINS,DEFAULT_ODD_PINS,DEFAULT_SUNDAY_JOBS,DEFAULT_WEEKS));
         const projCfg=await localStoreGet("housejobs:projectsConfig"),wp=await localStoreGet("housejobs:weeklyProjects");
         if(projCfg?.value)setProjects(JSON.parse(projCfg.value));
@@ -263,7 +266,7 @@ export default function HouseJobsApp(){
       setSundayAssignments(updated);await localStoreSet("housejobs:sundayAssignments",JSON.stringify(updated));
     }
   }),[fbConnected,persist,sundayAssignments]);
-  const saveSunCfg=useCallback((ep,op,sj)=>persist("Sunday setup",async()=>{if(fbConnected)await fbSet("sundayConfig",{evenPins:ep,oddPins:op,sundayJobs:sj});else await localStoreSet("housejobs:sundayConfig",JSON.stringify({evenPins:ep,oddPins:op,sundayJobs:sj}));}),[fbConnected,persist]);
+  const saveSunCfg=useCallback((ep,op,sj,away=awayMembers)=>persist("Sunday setup",async()=>{const cfg={evenPins:ep,oddPins:op,sundayJobs:sj,away:away||[]};if(fbConnected)await fbSet("sundayConfig",cfg);else await localStoreSet("housejobs:sundayConfig",JSON.stringify(cfg));}),[fbConnected,persist,awayMembers]);
   const saveProjA=useCallback((a,{preserveProgress=true}={})=>persist("Projects",async()=>{
     if(fbConnected){
       const proposed=sanitizeObjKeys(a);
@@ -386,10 +389,38 @@ export default function HouseJobsApp(){
     setArchiveBusy(true);
     try{
       const id=String(Date.now());
-      const snapshot={id,name:semesterName,archivedAt:new Date().toISOString(),config:{brothers,jobs,weeks,semesterName,chairs,locks},sundayConfig:{evenPins,oddPins,sundayJobs},projectsConfig:projects,houseSettings,announcements,assignments,sundayAssignments,weeklyProjects,houseIssues,houseOps:ops.data};
+      const snapshot={id,name:semesterName,archivedAt:new Date().toISOString(),config:{brothers,jobs,weeks,semesterName,chairs,locks},sundayConfig:{evenPins,oddPins,sundayJobs,away:awayMembers},projectsConfig:projects,houseSettings,announcements,assignments,sundayAssignments,weeklyProjects,houseIssues,houseOps:ops.data};
       const saved=await persist("Semester archive",async()=>{if(fbConnected)await fbSet(`archives/${id}`,snapshot);else await localStoreSet("housejobs:archives",JSON.stringify({...archives,[id]:snapshot}));});
       if(saved)setArchives(prev=>({...prev,[id]:snapshot}));
+      return saved;
     }finally{setArchiveBusy(false);}
+  }
+  // New semester (from the wizard): optionally archive, then replace the roster, weeks and all schedules.
+  async function startNewSemester({semesterName:name,weeks:w,brothers:b,chairs:ch,startGroup,archive,evenPins:ep,oddPins:op,away}){
+    setSaving(true);
+    try{
+      if(archive&&!(await archiveSemester()))throw new Error("The archive didn't save, so nothing was changed. Try again.");
+      // Pre-set each Sunday's pin group so the first one is the group the manager picked.
+      const skeleton=Object.fromEntries(w.map((wk,i)=>[wk,{group:(i%2===0)===(startGroup==="even")?"even":"odd",bothGroups:false,jobs:{}}]));
+      const a=generateAssignments(b,jobs,w,ch,[]);
+      if(!(await saveSunCfg(ep,op,sundayJobs,away)))throw new Error("The updated pin lists didn't save, so nothing else was changed.");
+      setEvenPins(ep);setOddPins(op);setAwayMembers(away);
+      const sa=generateSundayAssignments(ep,op,sundayJobs,w,skeleton);
+      const wp=generateWeeklyProjects(projects,w);
+      weeksRef.current=w;
+      const ok=await saveCfg(b,jobs,w,name,ch,[]);
+      if(!ok)throw new Error("The new semester setup didn't save. Nothing else was changed.");
+      savedCfgSig.current=setupSig({brothers:b,jobs:jobs.map(j=>({...j,people:crewSize(j),rotating:!!j.rotating,floorRotate:!!j.floorRotate})),weeks:w,semesterName:name,chairs:ch,locks:[]});
+      const results=await Promise.all([saveA(a,{preserveProgress:false}),saveSunA(sa,{preserveProgress:false}),saveProjA(wp,{preserveProgress:false})]);
+      setBrothers(b);setWeeks(w);setSemesterName(name);setChairs(ch);setLocks([]);
+      setAssignments(a);setSundayAssignments(sa);setWeeklyProjects(wp);
+      setCurrentWeekIdx(detectCurrentWeek(w));setView("dashboard");
+      if(!results.every(Boolean))throw new Error("Part of the new schedule didn't save. Open the weekly or Sunday page and tap Reshuffle to fill it in.");
+      setPersistenceNotice({type:"saved",message:`${name} is set up.`});
+    }catch(e){
+      console.error("New semester failed:",e);
+      setPersistenceNotice({type:"error",message:e.message||"The new semester wasn't set up."});
+    }finally{setSaving(false);}
   }
   function downloadArchive(archive){
     const blob=new Blob([JSON.stringify(archive,null,2)],{type:"application/json"});
@@ -747,7 +778,7 @@ export default function HouseJobsApp(){
       </header>
 
       <nav className="primary-nav" aria-label="Main navigation">
-        {HOUSE_TABS.map(tab=><button key={tab.key} aria-current={(view===tab.key||tab.key==="house"&&HOUSE_SUBVIEWS.includes(view)||tab.key==="manager"&&["setup","sunday_setup","project_setup"].includes(view))?"page":undefined} onClick={()=>{setView(tab.key);setSelectedBrother(null);}}><span className="nav-ico"><NavIcon name={tab.icon}/></span>{tab.label}{tab.key==="manager"&&adminUnlocked&&verificationQueue.length>0&&<small>{verificationQueue.length}</small>}</button>)}
+        {HOUSE_TABS.map(tab=><button key={tab.key} aria-current={(view===tab.key||tab.key==="house"&&HOUSE_SUBVIEWS.includes(view)||tab.key==="manager"&&["setup","sunday_setup","project_setup","semester_wizard"].includes(view))?"page":undefined} onClick={()=>{setView(tab.key);setSelectedBrother(null);}}><span className="nav-ico"><NavIcon name={tab.icon}/></span>{tab.label}{tab.key==="manager"&&adminUnlocked&&verificationQueue.length>0&&<small>{verificationQueue.length}</small>}</button>)}
       </nav>
 
       {persistenceNotice&&<div className={"toast "+persistenceNotice.type} role={persistenceNotice.type==="error"?"alert":"status"}>{persistenceNotice.message}{persistenceNotice.type==="error"&&<button aria-label="Dismiss" onClick={()=>setPersistenceNotice(null)}>×</button>}</div>}
@@ -1312,7 +1343,7 @@ export default function HouseJobsApp(){
             {[{n:verificationQueue.length,l:"Awaiting review",c:"var(--gold)"},{n:overdueItems.length,l:"Overdue",c:"var(--red)"},{n:openIssues.length,l:"Open issues",c:"var(--amber)"},{n:supplyReports.length,l:"Supply alerts",c:"var(--purple)"}].map(x=><div key={x.l} className="hm-card" style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:700,color:x.c,fontFamily:"'Space Mono',monospace"}}>{x.n}</div><div style={{fontSize:11,color:"var(--muted)",marginTop:3}}>{x.l}</div></div>)}
           </div>
           <div className="quick-links">
-            {[["Sunday","sunday","var(--purple)"],["House issues","issues","var(--amber)"],["Setup","setup","var(--gold)"],["Archive","archive","var(--blue)"]].map(([label,target,color])=><button key={label} onClick={()=>target==="archive"?archiveSemester():setView(target)} disabled={target==="archive"&&archiveBusy} style={{minWidth:112,background:`${tint(color,9)}`,border:`1px solid ${tint(color,31)}`,color,borderRadius:9,padding:"10px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{target==="archive"&&archiveBusy?"Saving...":label}</button>)}
+            {[["New semester","semester_wizard","var(--green)"],["Sunday","sunday","var(--purple)"],["House issues","issues","var(--amber)"],["Setup","setup","var(--gold)"],["Archive","archive","var(--blue)"]].map(([label,target,color])=><button key={label} onClick={()=>target==="archive"?archiveSemester():setView(target)} disabled={target==="archive"&&archiveBusy} style={{minWidth:112,background:`${tint(color,9)}`,border:`1px solid ${tint(color,31)}`,color,borderRadius:9,padding:"10px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>{target==="archive"&&archiveBusy?"Saving...":label}</button>)}
           </div>
           <OpsManager ops={ops} onNavigate={setView}/>
 
@@ -1373,6 +1404,7 @@ export default function HouseJobsApp(){
           <button onClick={checkPassword} disabled={adminLoading} style={{width:"100%",background:"linear-gradient(135deg,var(--amber),var(--amber-deep))",border:"none",color:"#FFF",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:adminLoading?.6:1}}>{adminLoading?"Signing in...":"Unlock"}</button>
         </div>}
 
+        {view==="semester_wizard"&&adminUnlocked&&<SemesterWizard semesterName={semesterName} brothers={brothers} evenPins={evenPins} oddPins={oddPins} away={awayMembers} jobs={jobs} chairs={chairs} busy={saving||archiveBusy} onCancel={()=>setView("manager")} onStart={startNewSemester}/>}
         {view==="setup"&&adminUnlocked&&<div className="fu">
           <button className="back-link" onClick={()=>setView("manager")}>‹ Manager</button>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>

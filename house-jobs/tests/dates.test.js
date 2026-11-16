@@ -19,6 +19,14 @@ test("handles a week that crosses New Year",()=>{
 test("after the semester, stays on the last week",()=>{
   assert.equal(detectCurrentWeek(["9/1-9/7","9/8-9/14"],on(2026,10,1)),1);
 });
+test("a spring schedule set up in November starts at week 1",()=>{
+  const spring=["1/11-1/17","1/18-1/24","4/26-5/2"];
+  assert.equal(detectCurrentWeek(spring,on(2026,11,15)),0);
+  assert.equal(detectCurrentWeek(spring,on(2027,1,19)),1);
+});
+test("a fall schedule viewed in January stays on its last week",()=>{
+  assert.equal(detectCurrentWeek(["8/31-9/6","12/7-12/13"],on(2027,1,5)),1);
+});
 test("generates Monday–Sunday labels and skips break weeks",()=>{
   assert.deepEqual(generateWeekLabels("2027-01-11","2027-02-07","2027-01-26"),["1/11-1/17","1/18-1/24","2/1-2/7"]);
 });

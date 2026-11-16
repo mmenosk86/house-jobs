@@ -37,23 +37,36 @@ export function generateWeekLabels(startValue,endValue,excludedText=""){
 
 // Week labels have no year. Handles weeks that cross New Year (12/29-1/4), and after the last
 // listed week, or during an unlisted break week, stays on the most recent week instead of jumping to week 1.
+// Labels are read in order, moving to the next year when the month goes backwards (12/29-1/4). The starting
+// year is whichever puts the semester closest to today, so a spring schedule set up in November counts as
+// upcoming (week 1), not as last spring (last week).
 export function detectCurrentWeek(weeksList,today=new Date()){
-  const range=(label,year)=>{
-    const parts=String(label).split("-");if(parts.length!==2)return null;
-    const parseDate=(s,y)=>{const p=s.trim().split("/");if(p.length!==2)return null;const d=new Date(y,parseInt(p[0])-1,parseInt(p[1]));return Number.isNaN(d.getTime())?null:d;};
-    const start=parseDate(parts[0],year);let end=parseDate(parts[1],year);
-    if(!start||!end)return null;
-    if(end<start)end=parseDate(parts[1],year+1);
-    end.setHours(23,59,59);
-    return[start,end];
+  const md=s=>{const p=String(s).trim().split("/").map(Number);return p.length===2&&p.every(Number.isFinite)?p:null;};
+  const datesFor=baseYear=>{
+    let year=baseYear,prevMonth=0;
+    return weeksList.map(label=>{
+      const[a,b]=String(label).split("-").map(md);if(!a||!b)return null;
+      if(a[0]<prevMonth)year++;
+      const start=new Date(year,a[0]-1,a[1]);
+      const endYear=b[0]<a[0]?year+1:year;
+      const end=new Date(endYear,b[0]-1,b[1],23,59,59);
+      prevMonth=b[0]<a[0]?b[0]:a[0];if(endYear>year)year=endYear;
+      return[start,end];
+    });
   };
-  let lastPast=-1;
-  for(let i=0;i<weeksList.length;i++){
-    for(const y of [today.getFullYear(),today.getFullYear()-1]){
-      const r=range(weeksList[i],y);if(!r)continue;
-      if(today>=r[0]&&today<=r[1])return i;
-      if(y===today.getFullYear()&&r[1]<today)lastPast=i;
-    }
+  let best=null;
+  for(const y of [today.getFullYear()-1,today.getFullYear(),today.getFullYear()+1]){
+    const ranges=datesFor(y).filter(Boolean);if(!ranges.length)continue;
+    const first=ranges[0][0],last=ranges[ranges.length-1][1];
+    const distance=today<first?first-today:today>last?today-last:0;
+    if(!best||distance<best.distance)best={distance,ranges:datesFor(y)};
   }
-  return lastPast>=0?lastPast:0;
+  if(!best)return 0;
+  let lastPast=-1;
+  for(let i=0;i<best.ranges.length;i++){
+    const r=best.ranges[i];if(!r)continue;
+    if(today>=r[0]&&today<=r[1])return i;
+    if(r[1]<today)lastPast=i;
+  }
+  return lastPast>=0?lastPast:0; // before the semester → week 1; break or after it → most recent week
 }
