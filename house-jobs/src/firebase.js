@@ -74,7 +74,7 @@ export function completionErrorText(error){
 // ─── Job reminders (push notifications) ───
 // Public "Web Push certificate" key from Firebase console → Project settings → Cloud Messaging.
 // Reminders stay hidden in the app until this is filled in.
-export const VAPID_KEY="";
+export const VAPID_KEY="BGGX15PEUStrKmR41vqnBGtGSowio6GVBfCu3ummC8giFc1R72OWEMNCJe-_60AFVb-5-nTw0-HYBXUAvJWnmZ4";
 const MESSAGING="https://www.gstatic.com/firebasejs/11.8.1/firebase-messaging.js";
 // "unsupported" (browser can't), "install" (iPhone: needs the home-screen app), "denied", "default" (not asked), "granted"
 export function pushSupport(){
